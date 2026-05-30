@@ -1121,13 +1121,12 @@ const DrillsPage=({nav})=>{
   return(
     <div>
       <Toast msg={toast}/>
-      <Crumb items={[{label:"Home",page:"home"},{label:"Drills"}]} nav={nav}/>
+      <Crumb items={[{label:"Home",page:"home"},{label:"Drilling Rigs"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <span style={{color:C.textMut}}>{Ic.filt}</span>
         <FSel label="Filter by Status" opts={["Active","InActive"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}}/>
         <FSel label="Filter by Type" opts={["Reverse Circulation","Surface - Coring","Underground - Coring"]} val={fType} onChange={v=>{setFType(v);setPage(1);}} w={180}/>
-        <FSel label="Filter by Make" opts={uniq(DRILLS_DATA,"make").filter(Boolean)} val={fMake} onChange={v=>{setFMake(v);setPage(1);}}/>
-        <FSel label="Filter by Model" opts={uniq(DRILLS_DATA,"model").filter(Boolean)} val={fModel} onChange={v=>{setFModel(v);setPage(1);}}/>
+        <FSel label="Filter by Brand" opts={uniq(DRILLS_DATA,"make").filter(Boolean)} val={fMake} onChange={v=>{setFMake(v);setPage(1);}}/>
         <Btn ch="Clear" onClick={reset} sm/>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
@@ -1138,17 +1137,18 @@ const DrillsPage=({nav})=>{
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
             <Th ch="" w={70}/>
-            <Th ch="Name"/><Th ch="Type"/><Th ch="Make"/><Th ch="Model"/>
-            <Th ch="Year"/><Th ch="Purchase Date"/><Th ch="Serial Number"/>
-            <th style={{width:100,background:"#f9fafb",borderBottom:"1px solid "+C.border}}/>
+            <Th ch="ID"/><Th ch="Type"/><Th ch="Brand"/><Th ch="Made By"/>
+            <th style={{width:110,background:"#f9fafb",borderBottom:"1px solid "+C.border}}/>
           </tr></thead>
           <tbody>
             {items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
                 <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.name}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted ${r.name}`)}/></>}/>
-                <Td ch={r.name}/><Td ch={r.type}/><Td ch={r.make||"—"}/>
-                <Td ch={r.model||"—"}/><Td ch={r.year||"—"}/><Td ch={r.purchDate||"—"}/><Td ch={r.serial||"—"}/>
-                <Td ch={<Btn ch="Deactivate" variant="gray" sm onClick={()=>doToast(`${r.name} deactivated`)}/>}/>
+                <Td ch={<span style={{fontWeight:500}}>{r.name}</span>}/>
+                <Td ch={r.type}/>
+                <Td ch={r.make||"—"}/>
+                <Td ch={r.model||"—"}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant="gray" sm onClick={()=>doToast(`${r.name} ${r.status==="Active"?"deactivated":"activated"}`)}/>}/>
               </tr>))}
           </tbody>
         </table>
@@ -1161,13 +1161,11 @@ const DrillsPage=({nav})=>{
         </button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
-      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add New Drill">
-        <FRow label="Drill Name"><FInput value={form.name} onChange={v=>setForm({...form,name:v})} placeholder="e.g. BT-25"/></FRow>
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add New Drilling Rig">
+        <FRow label="ID"><FInput value={form.name} onChange={v=>setForm({...form,name:v})} placeholder="e.g. BT-25"/></FRow>
         <FRow label="Type"><FSelect value={form.type} onChange={v=>setForm({...form,type:v})} opts={["Surface - Coring","Underground - Coring","Reverse Circulation"]}/></FRow>
-        <FRow label="Make"><FInput value={form.make} onChange={v=>setForm({...form,make:v})} placeholder="e.g. Boretech"/></FRow>
-        <FRow label="Model"><FInput value={form.model} onChange={v=>setForm({...form,model:v})} placeholder="e.g. BT2500"/></FRow>
-        <FRow label="Year"><FInput value={form.year} onChange={v=>setForm({...form,year:v})} placeholder="e.g. 2024" type="number"/></FRow>
-        <FRow label="Serial Number"><FInput value={form.serial} onChange={v=>setForm({...form,serial:v})}/></FRow>
+        <FRow label="Brand"><FInput value={form.make} onChange={v=>setForm({...form,make:v})} placeholder="e.g. Boretech"/></FRow>
+        <FRow label="Made By"><FInput value={form.model} onChange={v=>setForm({...form,model:v})} placeholder="e.g. BT2500"/></FRow>
         <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}>
           <Btn ch="Cancel" onClick={()=>setShowAdd(false)} sm/>
           <Btn ch="Save" variant="primary" sm onClick={()=>{setShowAdd(false);doToast("Drill saved successfully");setForm({});}}/>
@@ -1646,7 +1644,7 @@ const Sidebar=({page,nav,collapsed,setCollapsed})=>{
             <Item icon="💎" label="Bits" p="bits" indent/>
           </Group>
           <Group icon="⚙️" label="Presets" open={presetsOpen} setOpen={setPresetsOpen}>
-            <Item icon="⚙" label="Drills" p="drills" indent/>
+            <Item icon="⚙" label="Drilling Rigs" p="drills" indent/>
             <Item icon="🔧" label="Consumables" p="consumables" indent/>
             <Item icon="👷" label="Employees" p="employees" indent/>
             <Item icon="🚗" label="Equipment" p="equipment" indent/>
@@ -1674,7 +1672,7 @@ const Sidebar=({page,nav,collapsed,setCollapsed})=>{
 const PAGE_TITLES={
   "home":"Home","dsr":"Daily Shift Report","dsr-summary":"Daily Report Summary",
   "shift-detail":"Shift Detail","timesheet":"Timesheet","projects":"Projects",
-  "holes":"Holes","hole-detail":"Hole Detail","bits":"Bits","drills":"Drills",
+  "holes":"Holes","hole-detail":"Hole Detail","bits":"Bits","drills":"Drilling Rigs",
   "consumables":"Consumables","employees":"Employees","equipment":"Equipment","report-setup":"Report Setup",
 };
 const PAGE_ICONS={

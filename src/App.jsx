@@ -1584,11 +1584,11 @@ const ReportSetupPage=({nav})=>{
 
 // ── SIDEBAR ───────────────────────────────────────────────────────────────────
 
-const SIDEBAR_W=200;
+const SIDEBAR_W=260;
 
-const Sidebar=({page,nav,collapsed,setCollapsed})=>{
-  const [mgmtOpen,setMgmtOpen]=useState(["projects","holes","bits"].includes(page));
-  const [presetsOpen,setPresetsOpen]=useState(["drills","consumables","employees","equipment","report-setup"].includes(page));
+const Sidebar=({page,nav})=>{
+  const [mgmtOpen,setMgmtOpen]=useState(true);
+  const [presetsOpen,setPresetsOpen]=useState(true);
   const isActive=p=>p===page;
   const Item=({icon,label,p,badge,indent})=>(
     <div onClick={()=>nav(p)}
@@ -1596,8 +1596,8 @@ const Sidebar=({page,nav,collapsed,setCollapsed})=>{
         cursor:"pointer",borderRadius:4,margin:"1px 6px",
         background:isActive(p)?"#e0f2fe":"transparent",
         color:isActive(p)?C.blue:C.textSec,
-        fontSize:12,fontWeight:isActive(p)?600:400}}>
-      <span style={{fontSize:14}}>{icon}</span>
+        fontSize:13,fontWeight:isActive(p)?600:400}}>
+      <span style={{fontSize:15}}>{icon}</span>
       <span style={{flex:1}}>{label}</span>
       {badge&&<span style={{background:C.orange,color:"#fff",fontSize:10,fontWeight:700,
         padding:"1px 6px",borderRadius:10,minWidth:18,textAlign:"center"}}>{badge}</span>}
@@ -1606,8 +1606,8 @@ const Sidebar=({page,nav,collapsed,setCollapsed})=>{
     <div>
       <div onClick={()=>setOpen(o=>!o)}
         style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",
-          cursor:"pointer",color:C.textSec,fontSize:12}}>
-        <span style={{fontSize:14}}>{icon}</span>
+          cursor:"pointer",color:C.textSec,fontSize:13,fontWeight:500}}>
+        <span style={{fontSize:15}}>{icon}</span>
         <span style={{flex:1}}>{label}</span>
         <span style={{fontSize:10,transition:"transform .2s",
           transform:open?"rotate(180deg)":"rotate(0)"}}>{Ic.chD}</span>
@@ -1615,11 +1615,11 @@ const Sidebar=({page,nav,collapsed,setCollapsed})=>{
       {open&&<div>{children}</div>}
     </div>);
   return(
-    <div style={{width:collapsed?52:SIDEBAR_W,minWidth:collapsed?52:SIDEBAR_W,background:C.white,
+    <div style={{width:SIDEBAR_W,minWidth:SIDEBAR_W,background:C.white,
       borderRight:"1px solid "+C.border,display:"flex",flexDirection:"column",
-      height:"100vh",position:"sticky",top:0,flexShrink:0,transition:"width .2s",overflow:"hidden"}}>
+      height:"100vh",position:"sticky",top:0,flexShrink:0}}>
       {/* logo */}
-      <div style={{padding:"16px 10px 12px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",gap:10}}>
+      <div style={{padding:"18px 14px 14px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",gap:10}}>
         <div style={{width:36,height:36,background:C.green,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <svg width={22} height={22} viewBox="0 0 40 40" fill="none">
             <circle cx={20} cy={20} r={18} fill="#fff" fillOpacity=".15"/>
@@ -1627,42 +1627,28 @@ const Sidebar=({page,nav,collapsed,setCollapsed})=>{
             <circle cx={20} cy={12} r={3} fill="#fff"/>
           </svg>
         </div>
-        {!collapsed&&<div>
-          <div style={{fontSize:11,fontWeight:800,color:C.green,letterSpacing:.5,lineHeight:1}}>DRILLING</div>
-          <div style={{fontSize:11,fontWeight:800,color:C.green,letterSpacing:.5}}>EXPLORATION</div>
-        </div>}
+        <div>
+          <div style={{fontSize:12,fontWeight:800,color:C.green,letterSpacing:.5,lineHeight:1}}>DRILLING</div>
+          <div style={{fontSize:12,fontWeight:800,color:C.green,letterSpacing:.5}}>EXPLORATION</div>
+        </div>
       </div>
       {/* nav items */}
       <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
-        {!collapsed&&<>
-          <Item icon="🏠" label="Home" p="home"/>
-          <Item icon="📋" label="Daily Shift Report" p="dsr" badge={76}/>
-          <Item icon="⏱" label="Timesheet" p="timesheet"/>
-          <Group icon="🏗" label="Management" open={mgmtOpen} setOpen={setMgmtOpen}>
-            <Item icon="📂" label="Projects" p="projects" indent/>
-            <Item icon="⊙" label="Holes" p="holes" indent/>
-            <Item icon="💎" label="Bits" p="bits" indent/>
-          </Group>
-          <Group icon="⚙️" label="Presets" open={presetsOpen} setOpen={setPresetsOpen}>
-            <Item icon="⚙" label="Drilling Rigs" p="drills" indent/>
-            <Item icon="🔧" label="Consumables" p="consumables" indent/>
-            <Item icon="👷" label="Employees" p="employees" indent/>
-            <Item icon="🚗" label="Equipment" p="equipment" indent/>
-            <Item icon="📄" label="Report Setup" p="report-setup" indent/>
-          </Group>
-        </>}
-        {collapsed&&(
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,paddingTop:8}}>
-            {[["🏠","home"],["📋","dsr"],["⏱","timesheet"],["🏗","projects"],["⊙","holes"],
-              ["💎","bits"],["⚙","drills"],["🔧","consumables"],["👷","employees"],
-              ["🚗","equipment"],["📄","report-setup"]].map(([icon,p])=>(
-              <div key={p} onClick={()=>nav(p)} title={p}
-                style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",
-                  cursor:"pointer",borderRadius:4,background:isActive(p)?"#e0f2fe":"transparent",
-                  fontSize:16}}>
-                {icon}
-              </div>))}
-          </div>)}
+        <Item icon="🏠" label="Home" p="home"/>
+        <Item icon="📋" label="Daily Shift Report" p="dsr" badge={76}/>
+        <Item icon="⏱" label="Timesheet" p="timesheet"/>
+        <Group icon="🏗" label="Management" open={mgmtOpen} setOpen={setMgmtOpen}>
+          <Item icon="📂" label="Projects" p="projects" indent/>
+          <Item icon="⊙" label="Holes" p="holes" indent/>
+          <Item icon="💎" label="Bits" p="bits" indent/>
+        </Group>
+        <Group icon="⚙️" label="Presets" open={presetsOpen} setOpen={setPresetsOpen}>
+          <Item icon="⚙" label="Drilling Rigs" p="drills" indent/>
+          <Item icon="🔧" label="Consumables" p="consumables" indent/>
+          <Item icon="👷" label="Employees" p="employees" indent/>
+          <Item icon="🚗" label="Equipment" p="equipment" indent/>
+          <Item icon="📄" label="Report Setup" p="report-setup" indent/>
+        </Group>
       </div>
     </div>);
 };
@@ -1681,13 +1667,9 @@ const PAGE_ICONS={
   "consumables":"🔧","employees":"👷","equipment":"🚗","report-setup":"📄",
 };
 
-const Topbar=({page,collapsed,setCollapsed})=>(
+const Topbar=({page})=>(
   <div style={{display:"flex",alignItems:"center",padding:"0 20px",height:52,
     background:C.white,borderBottom:"1px solid "+C.border,flexShrink:0,position:"sticky",top:0,zIndex:50}}>
-    <button onClick={()=>setCollapsed(c=>!c)}
-      style={{background:"none",border:"none",cursor:"pointer",marginRight:12,color:C.textMut,display:"flex",alignItems:"center"}}>
-      {Ic.menu}
-    </button>
     <span style={{flex:1,textAlign:"center",fontSize:13,fontWeight:600,color:C.textSec}}>
       {PAGE_ICONS[page]} {PAGE_TITLES[page]||"AEB Operations Intelligence™"}
     </span>
@@ -1715,7 +1697,6 @@ const Topbar=({page,collapsed,setCollapsed})=>(
 export default function App(){
   const [page,setPage]=useState("home");
   const [params,setParams]=useState({});
-  const [sideCollapsed,setSideCollapsed]=useState(false);
 
   const nav=(p,pr={})=>{setPage(p);setParams(pr);window.scrollTo({top:0,behavior:"smooth"});};
 
@@ -1741,9 +1722,9 @@ export default function App(){
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:C.bg,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-      <Sidebar page={page} nav={nav} collapsed={sideCollapsed} setCollapsed={setSideCollapsed}/>
+      <Sidebar page={page} nav={nav}/>
       <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-        <Topbar page={page} collapsed={sideCollapsed} setCollapsed={setSideCollapsed}/>
+        <Topbar page={page}/>
         <div style={{flex:1,padding:20,width:"100%",boxSizing:"border-box"}}>
           {renderPage()}
         </div>

@@ -414,8 +414,8 @@ const HomePage=({nav})=>{
           </button>))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
-        {[{title:"📋 DSRs",val:"76",label:"Pending Validation",bg:C.orange,isReal:true},
-          {title:"⏱ Timesheets",val:"—",label:"Pending Validation",bg:"#9ca3af",isReal:false}
+        {[{title:"DSRs",val:"76",label:"Pending Validation",bg:C.orange,isReal:true},
+          {title:"Timesheets",val:"—",label:"Pending Validation",bg:"#9ca3af",isReal:false}
         ].map(sec=>(
           <div key={sec.title}>
             <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{sec.title}</div>
@@ -434,7 +434,7 @@ const HomePage=({nav})=>{
         <span style={{marginRight:14}}>👥 For all users</span><span>👤 For Logged-in user</span>
       </div>
       <div style={{background:C.white,border:"1px solid "+C.border,borderRadius:6,padding:16,marginBottom:16}}>
-        <SH icon="🎯" title="Off-Target KPIs"/>
+        <SH icon="" title="Off-Target KPIs"/>
         <div style={{marginBottom:8}}><SearchBar value="" onChange={()=>{}}/></div>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr><Th ch="Client"/><Th ch="Contract"/><Th ch="KPI"/><Th ch="Actual"/><Th ch="Target"/><Th ch="Difference"/></tr></thead>
@@ -453,7 +453,7 @@ const HomePage=({nav})=>{
         <Pager page={kpiPage} setPage={setKpiPage} per={10} total={kpiTotal}/>
       </div>
       <div style={{background:C.white,border:"1px solid "+C.border,borderRadius:6,padding:16}}>
-        <SH icon="🚩" title="Flags"/>
+        <SH icon="" title="Flags"/>
         <div style={{marginBottom:8}}><SearchBar value="" onChange={()=>{}}/></div>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr><Th ch="Record Type"/><Th ch="Name"/><Th ch="Flag"/></tr></thead>
@@ -901,15 +901,15 @@ const ProjectsPage=({nav})=>{
       <div style={{background:C.white,border:"1px solid "+C.border,borderRadius:6,overflow:"hidden"}}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            <Th ch="Project Status"/><Th ch="Project"/><Th ch="PO Number"/>
-            <Th ch="Client"/><Th ch="Contract"/><Th ch="Location"/><Th ch="# of Holes"/>
+            <Th ch="Status"/><Th ch="ID"/><Th ch="Client"/>
+            <Th ch="Contract"/><Th ch="Location"/><Th ch="# of Holes"/>
           </tr></thead>
           <tbody>
             {items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
                 <Td ch={<Badge s={r.status} sm/>}/>
                 <Td ch={<span style={{color:C.blue,cursor:"pointer"}} onClick={()=>nav("holes")}>{r.name}</span>}/>
-                <Td ch={r.po||"—"}/><Td ch={r.client}/>
+                <Td ch={r.client}/>
                 <Td ch={<span style={{color:C.blue,cursor:"pointer"}}>{r.contract}</span>}/>
                 <Td ch={r.location||"—"}/><Td ch={r.holes}/>
               </tr>))}
@@ -953,9 +953,9 @@ const HolesPage=({nav})=>{
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
             <Th ch="" w={70}/>
-            <Th ch="Hole Status"/><Th ch="Hole"/><Th ch="Client"/>
-            <Th ch="Contract"/><Th ch="Project"/><Th ch="Max Depth"/><Th ch="Last Activity Date"/>
-            <th style={{width:100,background:"#f9fafb",borderBottom:"1px solid "+C.border}}/>
+            <Th ch="Status"/><Th ch="ID"/><Th ch="Client"/>
+            <Th ch="Contract"/><Th ch="Project"/><Th ch="Depth"/><Th ch="Last Activity Date"/>
+            <th style={{width:120,background:"#f9fafb",borderBottom:"1px solid "+C.border}}/>
           </tr></thead>
           <tbody>
             {items.length===0?<NoRows/>:items.map(r=>(
@@ -964,16 +964,13 @@ const HolesPage=({nav})=>{
                   <IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.hole}`)}/>
                   <IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted ${r.hole}`)}/>
                 </>}/>
-                <Td ch={<span style={{display:"flex",alignItems:"center",gap:4}}>
-                  <span style={{width:8,height:8,borderRadius:"50%",background:"none",border:"1.5px solid #9ca3af",flexShrink:0}}/>
-                  <Badge s={r.status} sm/>
-                </span>}/>
+                <Td ch={<Badge s={r.status} sm/>}/>
                 <Td ch={<span style={{color:C.blue,cursor:"pointer"}} onClick={()=>nav("hole-detail",{hole:r.hole})}>{r.hole}</span>}/>
                 <Td ch={r.client}/>
                 <Td ch={<span style={{color:C.blue,cursor:"pointer"}}>{r.contract}</span>}/>
                 <Td ch={<span style={{color:C.blue,cursor:"pointer"}}>{r.project}</span>}/>
                 <Td ch={r.maxDepth}/><Td ch={r.lastActivity}/>
-                <Td ch={<Btn ch="Complete" variant="gray" sm onClick={()=>doToast(`Hole ${r.hole} marked complete`)}/>}/>
+                <Td ch={<Btn ch="Reactivate" variant="teal" sm onClick={()=>doToast(`Hole ${r.hole} reactivated`)}/>}/>
               </tr>))}
           </tbody>
         </table>
@@ -1213,18 +1210,19 @@ const BitsPage=({nav})=>{
       <div style={{background:C.white,border:"1px solid "+C.border,borderRadius:6,overflow:"hidden"}}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            <Th ch="Status"/><Th ch="Serial Number"/><Th ch="Make"/><Th ch="Model"/>
-            <Th ch="Contract"/><Th ch="Project"/><Th ch="Client"/>
-            <Th ch="Bit Size"/><Th ch="Bit Type"/><Th ch="Total Distance"/><Th ch="Bit Rate"/>
+            <Th ch="Status"/><Th ch="Serial #"/><Th ch="Model"/>
+            <Th ch="Client"/><Th ch="Contract"/><Th ch="Project"/>
+            <Th ch="Size"/><Th ch="Total Distance"/>
           </tr></thead>
           <tbody>
             {items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
                 <Td ch={<Badge s={r.status} sm/>}/>
-                <Td ch={r.serial}/><Td ch={r.make}/><Td ch={r.model}/>
+                <Td ch={r.serial}/><Td ch={r.model}/>
+                <Td ch={r.client}/>
                 <Td ch={<span style={{color:C.blue,cursor:"pointer",fontSize:11}}>{r.contract}</span>}/>
-                <Td ch={r.project}/><Td ch={r.client}/>
-                <Td ch={r.size}/><Td ch={r.type}/><Td ch={r.totalDist}/><Td ch={r.rate||"—"}/>
+                <Td ch={r.project}/>
+                <Td ch={r.size}/><Td ch={r.totalDist}/>
               </tr>))}
           </tbody>
         </table>

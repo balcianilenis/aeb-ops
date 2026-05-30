@@ -1730,8 +1730,8 @@ export default function App(){
         <div style={{borderTop:"1px solid "+C.border,padding:"10px 20px",
           display:"flex",justifyContent:"flex-end",alignItems:"center",gap:8,
           background:C.white,fontSize:11,color:C.textMut}}>
-          <span>© 2026 AEB Operations Intelligence™ · Powered by Krux Analytics Inc. All Rights Reserved.</span>
-          <svg width={16} height={16} viewBox="0 0 24 24" fill={C.purple}><text x={2} y={18} fontSize={16} fontWeight={700}>K</text></svg>
+          <span>© 2026 AEB Operations Intelligence™ · Powered by Anıl Enis BALCI All Rights Reserved.</span>
+          <span style={{fontWeight:700,color:C.purple,fontSize:13}}>NS</span>
         </div>
       </div>
     </div>);

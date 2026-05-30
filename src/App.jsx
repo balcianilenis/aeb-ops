@@ -1194,13 +1194,11 @@ const BitsPage=({nav})=>{
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <span style={{color:C.textMut}}>{Ic.filt}</span>
         <FSel label="Filter by Status" opts={["Active","Complete-Damaged","Complete-Worn Flat","Complete-Left in Hole","Complete-Worn Inner"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}} w={155}/>
-        <FSel label="Filter by Make" opts={uniq(BITS_DATA,"make").filter(Boolean)} val={fMake} onChange={v=>{setFMake(v);setPage(1);}}/>
         <FSel label="Filter by Model" opts={uniq(BITS_DATA,"model").filter(Boolean)} val={fModel} onChange={v=>{setFModel(v);setPage(1);}}/>
+        <FSel label="Filter by Client" opts={uniq(BITS_DATA,"client")} val="all" onChange={()=>{}} w={150}/>
         <FSel label="Filter by Contract" opts={uniq(BITS_DATA,"contract")} val="all" onChange={()=>{}} w={240}/>
         <FSel label="Filter by Project" opts={uniq(BITS_DATA,"project")} val="all" onChange={()=>{}} w={160}/>
-        <FSel label="Filter by Client" opts={uniq(BITS_DATA,"client")} val="all" onChange={()=>{}} w={150}/>
-        <FSel label="Filter by BitSize" opts={uniq(BITS_DATA,"size")} val={fSize} onChange={v=>{setFSize(v);setPage(1);}} w={130}/>
-        <FSel label="Filter by BitType" opts={uniq(BITS_DATA,"type")} val={fType} onChange={v=>{setFType(v);setPage(1);}} w={160}/>
+        <FSel label="Filter by Size" opts={uniq(BITS_DATA,"size")} val={fSize} onChange={v=>{setFSize(v);setPage(1);}} w={130}/>
         <Btn ch="Clear" onClick={reset} sm/>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>

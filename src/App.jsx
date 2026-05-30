@@ -1620,16 +1620,16 @@ const Sidebar=({page,nav})=>{
       height:"100vh",position:"sticky",top:0,flexShrink:0}}>
       {/* logo */}
       <div style={{padding:"18px 14px 14px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",gap:10}}>
-        <div style={{width:36,height:36,background:C.green,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <div style={{width:36,height:36,background:C.blue,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <svg width={22} height={22} viewBox="0 0 40 40" fill="none">
-            <circle cx={20} cy={20} r={18} fill="#fff" fillOpacity=".15"/>
+            <circle cx={20} cy={20} r={18} fill="#fff" fillOpacity=".2"/>
             <path d="M12 28 L20 12 L28 28" stroke="#fff" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"/>
             <circle cx={20} cy={12} r={3} fill="#fff"/>
           </svg>
         </div>
         <div>
-          <div style={{fontSize:12,fontWeight:800,color:C.green,letterSpacing:.5,lineHeight:1}}>DRILLING</div>
-          <div style={{fontSize:12,fontWeight:800,color:C.green,letterSpacing:.5}}>EXPLORATION</div>
+          <div style={{fontSize:11,fontWeight:800,color:C.blue,letterSpacing:.3,lineHeight:1.2}}>AEB Operations</div>
+          <div style={{fontSize:11,fontWeight:800,color:C.blue,letterSpacing:.3}}>Intelligence™</div>
         </div>
       </div>
       {/* nav items */}

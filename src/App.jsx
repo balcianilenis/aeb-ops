@@ -1591,23 +1591,25 @@ const Sidebar=({page,nav})=>{
   const isActive=p=>p===page;
   const Item=({icon,label,p,badge,indent})=>(
     <div onClick={()=>nav(p)}
-      style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px 7px "+(indent?32:14)+"px",
+      style={{display:"flex",alignItems:"center",gap:0,padding:"7px 12px",
         cursor:"pointer",borderRadius:4,margin:"1px 6px",
         background:isActive(p)?"#e0f2fe":"transparent",
         color:isActive(p)?C.blue:C.textSec,
         fontSize:13,fontWeight:isActive(p)?600:400}}>
-      <span style={{fontSize:15}}>{icon}</span>
-      <span style={{flex:1}}>{label}</span>
+      <span style={{width:20,flexShrink:0,marginLeft:indent?18:0}}/>
+      <span style={{width:22,flexShrink:0,fontSize:15,textAlign:"center"}}>{icon}</span>
+      <span style={{flex:1,marginLeft:8}}>{label}</span>
       {badge&&<span style={{background:C.orange,color:"#fff",fontSize:10,fontWeight:700,
         padding:"1px 6px",borderRadius:10,minWidth:18,textAlign:"center"}}>{badge}</span>}
     </div>);
   const Group=({icon,label,open,setOpen,children})=>(
     <div>
       <div onClick={()=>setOpen(o=>!o)}
-        style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",
+        style={{display:"flex",alignItems:"center",gap:0,padding:"7px 12px",
           cursor:"pointer",color:C.textSec,fontSize:13,fontWeight:500}}>
-        <span style={{fontSize:15}}>{icon}</span>
-        <span style={{flex:1}}>{label}</span>
+        <span style={{width:20,flexShrink:0}}/>
+        <span style={{width:22,flexShrink:0,fontSize:15,textAlign:"center"}}>{icon}</span>
+        <span style={{flex:1,marginLeft:8}}>{label}</span>
         <span style={{fontSize:10,transition:"transform .2s",
           transform:open?"rotate(180deg)":"rotate(0)"}}>{Ic.chD}</span>
       </div>

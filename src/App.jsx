@@ -1618,11 +1618,11 @@ const Sidebar=({page,nav})=>{
       borderRight:"1px solid "+C.border,display:"flex",flexDirection:"column",
       height:"100vh",position:"sticky",top:0,flexShrink:0}}>
       {/* logo */}
-      <div style={{padding:"18px 14px 14px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",gap:10}}>
-        <img src="/logo.png" alt="AEB Logo" style={{width:36,height:36,objectFit:"contain",flexShrink:0}}/>
+      <div style={{padding:"20px 16px 16px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",gap:12}}>
+        <img src="/logo.png" alt="AEB Logo" style={{width:48,height:48,objectFit:"contain",flexShrink:0}}/>
         <div>
-          <div style={{fontSize:11,fontWeight:800,color:C.blue,letterSpacing:.3,lineHeight:1.2}}>AEB Operations</div>
-          <div style={{fontSize:11,fontWeight:800,color:C.blue,letterSpacing:.3}}>Intelligence™</div>
+          <div style={{fontSize:14,fontWeight:900,color:C.blue,letterSpacing:.3,lineHeight:1.3}}>AEB Operations</div>
+          <div style={{fontSize:14,fontWeight:900,color:C.blue,letterSpacing:.3,lineHeight:1.3}}>Intelligence™</div>
         </div>
       </div>
       {/* nav items */}

@@ -1332,7 +1332,7 @@ const EmployeesPage=({nav})=>{
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <span style={{color:C.textMut}}>{Ic.filt}</span>
         <FSel label="Filter by Status" opts={["Active","InActive"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}}/>
-        <FSel label="Filter by Employee Type" opts={["Field","Office"]} val={fType} onChange={v=>{setFType(v);setPage(1);}} w={175}/>
+        <FSel label="Filter by Type" opts={["Field","Office"]} val={fType} onChange={v=>{setFType(v);setPage(1);}} w={155}/>
         <Btn ch="Clear" onClick={reset} sm/>
         <div style={{marginLeft:"auto"}}>
           <Btn ch="Manage Payroll Categories" variant="purple" onClick={()=>doToast("Payroll categories opened")}/>
@@ -1346,8 +1346,7 @@ const EmployeesPage=({nav})=>{
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
             <Th ch="" w={70}/>
-            <Th ch="Employee ID"/><Th ch="First Name"/><Th ch="Last Name"/>
-            <Th ch="Employee Type"/><Th ch="Payroll Category"/><Th ch="Last Work Date"/>
+            <Th ch="ID"/><Th ch="Name"/><Th ch="Type"/><Th ch="Payroll Category"/>
             <th style={{width:100,background:"#f9fafb",borderBottom:"1px solid "+C.border}}/>
           </tr></thead>
           <tbody>
@@ -1355,9 +1354,9 @@ const EmployeesPage=({nav})=>{
               <tr key={r.id}>
                 <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.first}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted ${r.first}`)}/></>}/>
                 <Td ch={r.empId}/>
-                <Td ch={<span style={{fontWeight:500}}>{r.first}</span>}/>
-                <Td ch={r.last}/>
-                <Td ch={r.type}/><Td ch={r.payroll||"—"}/><Td ch={r.lastWork||"—"}/>
+                <Td ch={<span style={{fontWeight:500}}>{r.first} {r.last!=="-"?r.last:""}</span>}/>
+                <Td ch={r.type}/>
+                <Td ch={r.payroll||"—"}/>
                 <Td ch={<Btn ch="Deactivate" variant="gray" sm onClick={()=>doToast(`${r.first} deactivated`)}/>}/>
               </tr>))}
           </tbody>

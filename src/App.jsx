@@ -1746,7 +1746,7 @@ export default function App(){
       <Sidebar page={page} nav={nav} collapsed={sideCollapsed} setCollapsed={setSideCollapsed}/>
       <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
         <Topbar page={page} collapsed={sideCollapsed} setCollapsed={setSideCollapsed}/>
-        <div style={{flex:1,padding:20,maxWidth:1200,width:"100%",boxSizing:"border-box"}}>
+        <div style={{flex:1,padding:20,width:"100%",boxSizing:"border-box"}}>
           {renderPage()}
         </div>
         <div style={{borderTop:"1px solid "+C.border,padding:"10px 20px",

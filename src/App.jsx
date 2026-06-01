@@ -2261,64 +2261,154 @@ const ContractsPage=({nav})=>{
     </div>);
 };
 
+
+// ── LOGIN PAGE ────────────────────────────────────────────────────────────────
+const LoginPage=()=>{
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const handleLogin=async(e)=>{
+    e.preventDefault();setLoading(true);setError("");
+    const {error}=await supabase.auth.signInWithPassword({email,password});
+    if(error){setError(error.message);setLoading(false);}
+  };
+  return(
+    <div style={{minHeight:"100vh",background:"#0f172a",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:"#fff",borderRadius:12,padding:36,width:380,boxShadow:"0 24px 48px rgba(0,0,0,.4)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:28}}>
+          <img src="/logo.png" alt="AEB" style={{width:44,height:44,objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
+          <div>
+            <div style={{fontSize:14,fontWeight:800,color:"#2563eb",letterSpacing:.3,lineHeight:1.3}}>AEB Operations</div>
+            <div style={{fontSize:14,fontWeight:800,color:"#2563eb",letterSpacing:.3}}>Intelligence™</div>
+          </div>
+        </div>
+        <h1 style={{fontSize:18,fontWeight:700,color:"#0f172a",marginBottom:4}}>Giriş Yap</h1>
+        <p style={{fontSize:13,color:"#64748b",marginBottom:24}}>Hesabınızla devam edin</p>
+        <form onSubmit={handleLogin}>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Email</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="email@sirket.com" required
+              style={{width:"100%",padding:"10px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"}}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Şifre</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required
+              style={{width:"100%",padding:"10px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"}}/>
+          </div>
+          {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"10px 12px",borderRadius:6,fontSize:12,marginBottom:14,border:"1px solid #fecdd3"}}>{error}</div>}
+          <button type="submit" disabled={loading}
+            style={{width:"100%",padding:11,fontSize:14,fontWeight:700,background:loading?"#93c5fd":"#2563eb",color:"#fff",border:"none",borderRadius:7,cursor:loading?"default":"pointer"}}>
+            {loading?"Giriş yapılıyor...":"Giriş Yap"}
+          </button>
+        </form>
+        <p style={{marginTop:20,textAlign:"center",fontSize:11,color:"#94a3b8"}}>© 2026 AEB Operations Intelligence™</p>
+      </div>
+    </div>);
+};
+
+// ── USER MANAGEMENT PAGE ──────────────────────────────────────────────────────
+const UsersPage=({nav,currentUser})=>{
+  const [users,setUsers]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [toast,setToast]=useState("");
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+  const fetchUsers=useCallback(async()=>{
+    setLoading(true);
+    const {data}=await supabase.from('user_profiles').select('*').order('email');
+    setUsers(data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{fetchUsers();},[fetchUsers]);
+  const handleRoleChange=async(id,role)=>{
+    const {error}=await supabase.from('user_profiles').update({role}).eq('id',id);
+    if(error)doToast("Hata: "+error.message);
+    else{doToast(`✓ Rol → ${role}`);fetchUsers();}
+  };
+  const handleToggle=async(u)=>{
+    await supabase.from('user_profiles').update({is_active:!u.is_active}).eq('id',u.id);
+    doToast(`✓ ${u.email} güncellendi`);fetchUsers();
+  };
+  const rc={Admin:C.purple,Supervisor:C.blue,Viewer:C.teal};
+  return(
+    <div>
+      <Toast msg={toast}/>
+      <Crumb items={[{label:"Home",page:"home"},{label:"User Management"}]} nav={nav}/>
+      <Card p={0}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>
+            <Th ch="Email"/><Th ch="Full Name"/><Th ch="Role"/><Th ch="Status"/><Th ch="Created"/>
+            <th style={{width:100,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
+          </tr></thead>
+          <tbody>
+            {loading?<tr><td colSpan={6} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :users.length===0?<NoRows/>:users.map(u=>(
+              <tr key={u.id}>
+                <Td ch={<strong>{u.email}</strong>}/>
+                <Td ch={u.full_name||"—"}/>
+                <Td ch={
+                  <select value={u.role} onChange={e=>handleRoleChange(u.id,e.target.value)}
+                    disabled={u.id===currentUser?.id}
+                    style={{padding:"4px 10px",fontSize:12,fontWeight:700,border:`1.5px solid ${rc[u.role]||C.border}`,
+                      borderRadius:5,color:rc[u.role],background:"#fff",cursor:"pointer",appearance:"none"}}>
+                    {["Admin","Supervisor","Viewer"].map(r=><option key={r} value={r}>{r}</option>)}
+                  </select>}/>
+                <Td ch={<span style={{fontSize:11,background:u.is_active?"#f0fdf4":"#f8fafc",
+                  color:u.is_active?C.green:C.textMut,padding:"2px 8px",borderRadius:10,fontWeight:600}}>
+                  {u.is_active?"Active":"Inactive"}</span>}/>
+                <Td ch={u.created_at?.split("T")[0]||"—"}/>
+                <Td ch={u.id!==currentUser?.id&&(
+                  <Btn ch={u.is_active?"Deactivate":"Activate"} variant={u.is_active?"gray":"teal"} sm onClick={()=>handleToggle(u)}/>)}/>
+              </tr>))}
+          </tbody>
+        </table>
+      </Card>
+      <div style={{marginTop:12,padding:12,background:"#fffbeb",borderRadius:8,border:"1px solid #fde68a",fontSize:12,color:"#92400e"}}>
+        💡 <strong>Yeni kullanıcı eklemek için:</strong> Supabase Dashboard → Authentication → Users → Invite user
+      </div>
+    </div>);
+};
+
 // ── SIDEBAR ───────────────────────────────────────────────────────────────────
-const Sidebar=({page,nav})=>{
+const Sidebar=({page,nav,user,role,onLogout})=>{
   const [mgmtOpen,setMgmtOpen]=useState(true);
   const [presetsOpen,setPresetsOpen]=useState(true);
   const isActive=p=>p===page;
-
-  const NavItem=({label,p,badge,indent,dot})=>{
+  const rc={Admin:C.purple,Supervisor:C.blue,Viewer:C.teal};
+  const NavItem=({label,p,badge,indent})=>{
     const active=isActive(p);
     return(
       <div onClick={()=>nav(p)}
         style={{display:"flex",alignItems:"center",padding:"8px 16px 8px "+(indent?36:16)+"px",
           cursor:"pointer",borderRadius:6,margin:"1px 8px",
-          background:active?C.sidebarActive:"transparent",
-          transition:"background .15s"}}>
+          background:active?C.sidebarActive:"transparent",transition:"background .15s"}}>
         {indent&&<span style={{width:6,height:6,borderRadius:"50%",
-          background:active?C.sidebarActiveText:C.sidebarText,
-          flexShrink:0,marginRight:10}}/>}
+          background:active?C.sidebarActiveText:C.sidebarText,flexShrink:0,marginRight:10}}/>}
         <span style={{flex:1,fontSize:13,fontWeight:active?700:500,
-          color:active?C.sidebarActiveText:C.sidebarText,letterSpacing:.1}}>
-          {label}
-        </span>
+          color:active?C.sidebarActiveText:C.sidebarText,letterSpacing:.1}}>{label}</span>
         {badge&&<span style={{background:C.orange,color:"#fff",fontSize:10,fontWeight:800,
-          padding:"2px 7px",borderRadius:20,minWidth:20,textAlign:"center",
-          boxShadow:"0 1px 4px rgba(0,0,0,.3)"}}>
-          {badge}
-        </span>}
+          padding:"2px 7px",borderRadius:20,minWidth:20,textAlign:"center"}}>{badge}</span>}
       </div>);
   };
-
   const GroupHeader=({label,open,setOpen})=>(
     <div onClick={()=>setOpen(o=>!o)}
-      style={{display:"flex",alignItems:"center",padding:"7px 16px",cursor:"pointer",
-        margin:"4px 8px 2px"}}>
-      <span style={{flex:1,fontSize:10,fontWeight:700,color:"#64748b",
-        textTransform:"uppercase",letterSpacing:1.2}}>{label}</span>
-      <span style={{color:"#64748b",fontSize:9,transition:"transform .2s",
-        transform:open?"rotate(180deg)":"rotate(0)"}}>{Ic.chD}</span>
+      style={{display:"flex",alignItems:"center",padding:"7px 16px",cursor:"pointer",margin:"4px 8px 2px"}}>
+      <span style={{flex:1,fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:1.2}}>{label}</span>
+      <span style={{color:"#64748b",fontSize:9,transition:"transform .2s",transform:open?"rotate(180deg)":"rotate(0)"}}>{Ic.chD}</span>
     </div>);
-
   return(
-    <div style={{width:260,minWidth:260,background:C.sidebarBg,display:"flex",
-      flexDirection:"column",height:"100vh",position:"sticky",top:0,flexShrink:0,
-      borderRight:"1px solid rgba(255,255,255,.06)"}}>
-      {/* Logo */}
-      <div style={{padding:"20px 16px 18px",borderBottom:`1px solid ${C.sidebarBorder}`,
-        display:"flex",alignItems:"center",gap:12}}>
-        <img src="/logo.png" alt="AEB Logo"
-          style={{width:42,height:42,objectFit:"contain",flexShrink:0,
-            filter:"drop-shadow(0 2px 4px rgba(0,0,0,.3))"}}/>
+    <div style={{width:260,minWidth:260,background:C.sidebarBg,display:"flex",flexDirection:"column",
+      height:"100vh",position:"sticky",top:0,flexShrink:0,borderRight:"1px solid rgba(255,255,255,.06)"}}>
+      <div style={{padding:"20px 16px 18px",borderBottom:`1px solid ${C.sidebarBorder}`,display:"flex",alignItems:"center",gap:12}}>
+        <img src="/logo.png" alt="AEB Logo" style={{width:42,height:42,objectFit:"contain",flexShrink:0,filter:"drop-shadow(0 2px 4px rgba(0,0,0,.3))"}}
+          onError={e=>{e.target.style.display="none";}}/>
         <div>
           <div style={{fontSize:13,fontWeight:800,color:"#f1f5f9",letterSpacing:.3,lineHeight:1.3}}>AEB Operations</div>
           <div style={{fontSize:13,fontWeight:800,color:"#60a5fa",letterSpacing:.3}}>Intelligence™</div>
         </div>
       </div>
-      {/* Nav */}
       <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
         <NavItem label="Home" p="home"/>
-        <NavItem label="Daily Shift Report" p="dsr" badge={76}/>
+        <NavItem label="Daily Shift Report" p="dsr"/>
         <NavItem label="Timesheet" p="timesheet"/>
         <GroupHeader label="Management" open={mgmtOpen} setOpen={setMgmtOpen}/>
         {mgmtOpen&&<>
@@ -2327,6 +2417,7 @@ const Sidebar=({page,nav})=>{
           <NavItem label="Projects" p="projects" indent/>
           <NavItem label="Holes" p="holes" indent/>
           <NavItem label="Bits" p="bits" indent/>
+          {role==="Admin"&&<NavItem label="Users" p="users" indent/>}
         </>}
         <GroupHeader label="Presets" open={presetsOpen} setOpen={setPresetsOpen}/>
         {presetsOpen&&<>
@@ -2337,21 +2428,18 @@ const Sidebar=({page,nav})=>{
           <NavItem label="Report Setup" p="report-setup" indent/>
         </>}
       </div>
-      {/* User footer */}
-      <div style={{padding:"12px 16px",borderTop:`1px solid ${C.sidebarBorder}`,
-        display:"flex",alignItems:"center",gap:10}}>
-        <div style={{width:30,height:30,background:"#2563eb",borderRadius:"50%",
+      <div style={{padding:"12px 16px",borderTop:`1px solid ${C.sidebarBorder}`,display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:32,height:32,background:rc[role]||C.blue,borderRadius:"50%",
           display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-          <span style={{fontSize:12,fontWeight:700,color:"#fff"}}>S</span>
+          <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>{user?.email?.[0]?.toUpperCase()||"U"}</span>
         </div>
         <div style={{flex:1,overflow:"hidden"}}>
-          <div style={{fontSize:12,fontWeight:600,color:"#f1f5f9",
-            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-            supervisor@drillexp.com
-          </div>
+          <div style={{fontSize:11,fontWeight:600,color:"#f1f5f9",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.email||"—"}</div>
+          <div style={{fontSize:10,color:rc[role]||"#60a5fa",fontWeight:600,marginTop:1}}>{role||"Viewer"}</div>
         </div>
-        <button style={{background:"none",border:"none",cursor:"pointer",
-          color:"#64748b",display:"flex",alignItems:"center"}}>
+        <button onClick={onLogout} title="Çıkış Yap"
+          style={{background:"rgba(255,255,255,.08)",border:"none",cursor:"pointer",
+            color:"#94a3b8",display:"flex",alignItems:"center",padding:6,borderRadius:6}}>
           {Ic.logout}
         </button>
       </div>
@@ -2364,30 +2452,74 @@ const PAGE_TITLES={
   "shift-detail":"Shift Detail","timesheet":"Timesheet",
   "clients":"Clients","contracts":"Contracts","projects":"Projects",
   "holes":"Holes","hole-detail":"Hole Detail","bits":"Bits","drills":"Drilling Rigs",
-  "consumables":"Consumables","employees":"Employees","equipment":"Equipment","report-setup":"Report Setup",
+  "consumables":"Consumables","employees":"Employees","equipment":"Equipment",
+  "report-setup":"Report Setup","users":"User Management",
 };
 
-const Topbar=({page})=>(
-  <div style={{height:52,background:C.white,borderBottom:`1px solid ${C.border}`,
-    display:"flex",alignItems:"center",paddingRight:20,flexShrink:0,
-    position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}>
-    <div style={{flex:1,padding:"0 24px"}}>
-      <span style={{fontSize:14,fontWeight:700,color:C.textPri}}>
-        {PAGE_TITLES[page]||"AEB Operations Intelligence™"}
-      </span>
-    </div>
-    <div style={{display:"flex",alignItems:"center",gap:10}}>
-      <button style={{width:28,height:28,borderRadius:"50%",background:"#1d4ed8",color:"#fff",
-        border:"none",cursor:"pointer",fontWeight:700,fontSize:13}}>?</button>
-    </div>
-  </div>);
+const Topbar=({page,role})=>{
+  const rc={Admin:C.purple,Supervisor:C.blue,Viewer:C.teal};
+  const rbc={Admin:"#faf5ff",Supervisor:"#eff6ff",Viewer:"#f0fdfa"};
+  return(
+    <div style={{height:52,background:C.white,borderBottom:`1px solid ${C.border}`,
+      display:"flex",alignItems:"center",paddingRight:20,flexShrink:0,
+      position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}>
+      <div style={{flex:1,padding:"0 24px"}}>
+        <span style={{fontSize:14,fontWeight:700,color:C.textPri}}>
+          {PAGE_TITLES[page]||"AEB Operations Intelligence™"}
+        </span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {role&&<span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:12,
+          background:rbc[role]||"#f0fdfa",color:rc[role]||C.teal}}>{role}</span>}
+        <button style={{width:28,height:28,borderRadius:"50%",background:"#1d4ed8",color:"#fff",
+          border:"none",cursor:"pointer",fontWeight:700,fontSize:13}}>?</button>
+      </div>
+    </div>);
+};
 
 // ── APP ROOT ──────────────────────────────────────────────────────────────────
 export default function App(){
   const [page,setPage]=useState("home");
   const [params,setParams]=useState({});
+  const [authState,setAuthState]=useState("loading");
+  const [user,setUser]=useState(null);
+  const [role,setRole]=useState("Viewer");
+
+  const loadRole=useCallback(async(userId)=>{
+    const {data}=await supabase.from('user_profiles').select('role,is_active').eq('id',userId).single();
+    if(data){
+      if(!data.is_active){await supabase.auth.signOut();setAuthState("unauthed");return;}
+      setRole(data.role||"Viewer");
+    }
+    setAuthState("authed");
+  },[]);
+
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>{
+      if(session){setUser(session.user);loadRole(session.user.id);}
+      else setAuthState("unauthed");
+    });
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      if(session){setUser(session.user);loadRole(session.user.id);}
+      else{setUser(null);setRole("Viewer");setAuthState("unauthed");}
+    });
+    return()=>subscription.unsubscribe();
+  },[loadRole]);
+
+  const handleLogout=async()=>{
+    await supabase.auth.signOut();
+    setPage("home");
+  };
+
   const nav=(p,pr={})=>{setPage(p);setParams(pr);window.scrollTo({top:0,behavior:"smooth"});};
+  const isAdmin=role==="Admin";
+
   const renderPage=()=>{
+    if(page==="users"&&!isAdmin)return(
+      <div style={{textAlign:"center",padding:60,color:C.textMut}}>
+        <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+        <div style={{fontSize:15,fontWeight:600}}>Bu sayfaya erişim yetkiniz yok.</div>
+      </div>);
     switch(page){
       case "home":         return <HomePage nav={nav}/>;
       case "dsr":          return <DSRPage nav={nav}/>;
@@ -2405,15 +2537,28 @@ export default function App(){
       case "employees":    return <EmployeesPage nav={nav}/>;
       case "equipment":    return <EquipmentPage nav={nav}/>;
       case "report-setup": return <ReportSetupPage nav={nav}/>;
+      case "users":        return <UsersPage nav={nav} currentUser={user}/>;
       default:             return <HomePage nav={nav}/>;
     }
   };
+
+  if(authState==="loading")return(
+    <div style={{minHeight:"100vh",background:"#0f172a",display:"flex",alignItems:"center",
+      justifyContent:"center",flexDirection:"column",gap:12}}>
+      <img src="/logo.png" alt="AEB" style={{width:56,height:56,objectFit:"contain",opacity:.8}}
+        onError={e=>{e.target.style.display="none";}}/>
+      <div style={{color:"#60a5fa",fontSize:14,fontWeight:600}}>AEB Operations Intelligence™</div>
+      <div style={{color:"#475569",fontSize:12}}>Yükleniyor...</div>
+    </div>);
+
+  if(authState==="unauthed")return <LoginPage/>;
+
   return(
     <div style={{display:"flex",minHeight:"100vh",background:C.bg,
       fontFamily:"'Inter','Segoe UI',system-ui,sans-serif"}}>
-      <Sidebar page={page} nav={nav}/>
+      <Sidebar page={page} nav={nav} user={user} role={role} onLogout={handleLogout}/>
       <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-        <Topbar page={page}/>
+        <Topbar page={page} role={role}/>
         <main style={{flex:1,padding:24,boxSizing:"border-box"}}>
           {renderPage()}
         </main>

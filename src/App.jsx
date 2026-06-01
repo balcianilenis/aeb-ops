@@ -1432,8 +1432,8 @@ const DrillsPage=({nav})=>{
     </div>);
 };
 
-// ── BIT MODAL ─────────────────────────────────────────────────────────────────
-const BitModal=({open,onClose,onSaved,initialData,clients,contracts,projects})=>{
+// ── BIT MODAL (with usage records) ───────────────────────────────────────────
+const BitModal=({open,onClose,onSaved,initialData,clients,contracts,projects,holes})=>{
   const [serial,setSerial]=useState("");
   const [status,setStatus]=useState("Active");
   const [model,setModel]=useState("");
@@ -1441,83 +1441,202 @@ const BitModal=({open,onClose,onSaved,initialData,clients,contracts,projects})=>
   const [clientId,setClientId]=useState("");
   const [contractId,setContractId]=useState("");
   const [projectId,setProjectId]=useState("");
-  const [totalDist,setTotalDist]=useState("");
+  const [records,setRecords]=useState([]);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
+
+  // Toplam mesafe otomatik hesapla
+  const totalDist=useMemo(()=>records.reduce((sum,r)=>{
+    const d=(parseFloat(r.depth_to)||0)-(parseFloat(r.depth_from)||0);
+    return sum+(d>0?d:0);
+  },0),[records]);
+
   useEffect(()=>{
     if(open){
-      setSerial(initialData?.serial_number||"");setStatus(initialData?.status||"Active");
-      setModel(initialData?.model||"");setBitSize(initialData?.bit_size||"");
-      setClientId(initialData?.client_id||"");setContractId(initialData?.contract_id||"");
-      setProjectId(initialData?.project_id||"");setTotalDist(initialData?.total_distance||"");
+      setSerial(initialData?.serial_number||"");
+      setStatus(initialData?.status||"Active");
+      setModel(initialData?.model||"");
+      setBitSize(initialData?.bit_size||"");
+      setClientId(initialData?.client_id||"");
+      setContractId(initialData?.contract_id||"");
+      setProjectId(initialData?.project_id||"");
       setError("");
+      // Mevcut kayıtları çek
+      if(initialData?.id){
+        supabase.from('bit_usage_records').select('*').eq('bit_id',initialData.id).order('created_at')
+          .then(({data})=>setRecords((data||[]).map(r=>({...r,_key:r.id}))));
+      } else {
+        setRecords([]);
+      }
     }
   },[open,initialData]);
+
+  const addRow=()=>setRecords(p=>[...p,{_key:Date.now(),hole_id:"",hole_name:"",depth_from:"",depth_to:""}]);
+
+  const updateRow=(key,field,val)=>setRecords(p=>p.map(r=>r._key===key?{...r,[field]:val}:r));
+
+  const removeRow=async(row)=>{
+    if(row.id){
+      await supabase.from('bit_usage_records').delete().eq('id',row.id);
+    }
+    setRecords(p=>p.filter(r=>r._key!==row._key));
+  };
+
   const handleSave=async()=>{
     if(!serial.trim()){setError("Serial number zorunlu!");return;}
     setSaving(true);
+    // Bit kaydet
     const payload={
       serial_number:serial.trim(),status,model:model||null,bit_size:bitSize||null,
       client_id:clientId||null,contract_id:contractId||null,project_id:projectId||null,
-      total_distance:totalDist?parseFloat(totalDist):0
+      total_distance:totalDist
     };
-    const r=initialData?.id
-      ?await supabase.from('bits').update(payload).eq('id',initialData.id)
-      :await supabase.from('bits').insert(payload);
+    let bitId=initialData?.id;
+    if(bitId){
+      const r=await supabase.from('bits').update(payload).eq('id',bitId);
+      if(r.error){setSaving(false);setError(r.error.message);return;}
+    } else {
+      const r=await supabase.from('bits').insert(payload).select('id').single();
+      if(r.error){setSaving(false);setError(r.error.message);return;}
+      bitId=r.data.id;
+    }
+    // Usage records kaydet
+    for(const row of records){
+      if(!row.depth_from&&!row.depth_to&&!row.hole_name)continue;
+      const rec={bit_id:bitId,hole_id:row.hole_id||null,hole_name:row.hole_name||null,depth_from:parseFloat(row.depth_from)||0,depth_to:parseFloat(row.depth_to)||0};
+      if(row.id){
+        await supabase.from('bit_usage_records').update(rec).eq('id',row.id);
+      } else {
+        await supabase.from('bit_usage_records').insert(rec);
+      }
+    }
+    // Total distance güncelle
+    await supabase.from('bits').update({total_distance:totalDist}).eq('id',bitId);
     setSaving(false);
-    if(r.error){setError(r.error.message);return;}
     onSaved();onClose();
   };
+
   if(!open)return null;
-  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
-  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  const inp={padding:"7px 10px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:6,boxSizing:"border-box",outline:"none"};
+  const lbl={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:4,textTransform:"uppercase",letterSpacing:.5};
   return(
     <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
-      <div style={{background:"#fff",borderRadius:12,padding:28,width:500,maxHeight:"85vh",overflow:"auto",boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+      <div style={{background:"#fff",borderRadius:12,padding:24,width:640,maxHeight:"90vh",overflow:"auto",boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
           <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Bit":"Add Bit"}</strong>
           <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
         </div>
-        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div><label style={l}>Serial Number *</label><input value={serial} onChange={e=>setSerial(e.target.value)} style={s} placeholder="e.g. BIT-2024-001"/></div>
-          <div><label style={l}>Status</label>
-            <select value={status} onChange={e=>setStatus(e.target.value)} style={{...s,appearance:"none"}}>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:12}}>{error}</div>}
+
+        {/* Temel bilgiler */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={lbl}>Serial Number *</label><input value={serial} onChange={e=>setSerial(e.target.value)} style={{...inp,width:"100%"}} placeholder="e.g. BIT-2024-001"/></div>
+          <div><label style={lbl}>Status</label>
+            <select value={status} onChange={e=>setStatus(e.target.value)} style={{...inp,width:"100%",appearance:"none"}}>
               <option>Active</option><option>Complete-Damaged</option><option>Complete-Worn Flat</option><option>Complete-Left in Hole</option><option>Complete-Worn Inner</option>
             </select></div>
-          <div><label style={l}>Model</label><input value={model} onChange={e=>setModel(e.target.value)} style={s} placeholder="e.g. HQ3"/></div>
-          <div><label style={l}>Bit Size</label><input value={bitSize} onChange={e=>setBitSize(e.target.value)} style={s} placeholder="e.g. HQ3"/></div>
-          <div><label style={l}>Total Distance (m)</label><input type="number" value={totalDist} onChange={e=>setTotalDist(e.target.value)} style={s} placeholder="0"/></div>
+          <div><label style={lbl}>Model</label><input value={model} onChange={e=>setModel(e.target.value)} style={{...inp,width:"100%"}} placeholder="e.g. HQ3"/></div>
+          <div><label style={lbl}>Bit Size</label><input value={bitSize} onChange={e=>setBitSize(e.target.value)} style={{...inp,width:"100%"}} placeholder="e.g. HQ"/></div>
         </div>
-        <div style={{marginTop:12}}><label style={l}>Client</label>
-          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...s,appearance:"none"}}>
-            <option value="">Select...</option>
-            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></div>
-        <div style={{marginTop:12}}><label style={l}>Contract</label>
-          <select value={contractId} onChange={e=>setContractId(e.target.value)} style={{...s,appearance:"none"}}>
-            <option value="">Select...</option>
-            {contracts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></div>
-        <div style={{marginTop:12,marginBottom:20}}><label style={l}>Project</label>
-          <select value={projectId} onChange={e=>setProjectId(e.target.value)} style={{...s,appearance:"none"}}>
-            <option value="">Select...</option>
-            {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-          </select></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:18}}>
+          <div><label style={lbl}>Client</label>
+            <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...inp,width:"100%",appearance:"none"}}>
+              <option value="">Select...</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select></div>
+          <div><label style={lbl}>Contract</label>
+            <select value={contractId} onChange={e=>setContractId(e.target.value)} style={{...inp,width:"100%",appearance:"none"}}>
+              <option value="">Select...</option>{contracts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select></div>
+          <div><label style={lbl}>Project</label>
+            <select value={projectId} onChange={e=>setProjectId(e.target.value)} style={{...inp,width:"100%",appearance:"none"}}>
+              <option value="">Select...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select></div>
+        </div>
+
+        {/* Kuyu / Derinlik kayıtları */}
+        <div style={{background:"#f8fafc",borderRadius:8,padding:14,marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <span style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>Kuyu Kullanım Kayıtları</span>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:12,color:"#64748b"}}>
+                Toplam: <strong style={{color:"#2563eb"}}>{totalDist.toFixed(2)} m</strong>
+              </span>
+              <button onClick={addRow}
+                style={{padding:"4px 12px",fontSize:12,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:5,cursor:"pointer"}}>
+                + Ekle
+              </button>
+            </div>
+          </div>
+          {records.length===0?(
+            <div style={{textAlign:"center",padding:"16px 0",color:"#94a3b8",fontSize:13}}>
+              Henüz kayıt yok — "+ Ekle" ile kuyu ve derinlik bilgisi gir
+            </div>
+          ):(
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                <tr>
+                  {["Kuyu Adı","Derinlik (m)","Kadar (m)","Mesafe",""].map(h=>(
+                    <th key={h} style={{padding:"6px 8px",fontSize:11,fontWeight:700,color:"#475569",
+                      background:"#f1f5f9",borderBottom:"1px solid #e2e8f0",textAlign:"left",textTransform:"uppercase",letterSpacing:.5}}>{h}</th>))}
+                </tr>
+              </thead>
+              <tbody>
+                {records.map(row=>{
+                  const dist=Math.max(0,(parseFloat(row.depth_to)||0)-(parseFloat(row.depth_from)||0));
+                  return(
+                    <tr key={row._key}>
+                      <td style={{padding:"5px 6px"}}>
+                        {holes.length>0
+                          ?<select value={row.hole_id||""} onChange={e=>{
+                              const h=holes.find(h=>h.id===e.target.value);
+                              updateRow(row._key,"hole_id",e.target.value);
+                              if(h)updateRow(row._key,"hole_name",h.name);
+                            }} style={{...inp,width:"100%",appearance:"none",fontSize:12}}>
+                              <option value="">Seç veya yaz...</option>
+                              {holes.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
+                            </select>
+                          :<input value={row.hole_name||""} onChange={e=>updateRow(row._key,"hole_name",e.target.value)}
+                              style={{...inp,width:"100%",fontSize:12}} placeholder="Kuyu adı"/>}
+                      </td>
+                      <td style={{padding:"5px 6px"}}>
+                        <input type="number" value={row.depth_from||""} onChange={e=>updateRow(row._key,"depth_from",e.target.value)}
+                          style={{...inp,width:80,fontSize:12}} placeholder="0"/>
+                      </td>
+                      <td style={{padding:"5px 6px"}}>
+                        <input type="number" value={row.depth_to||""} onChange={e=>updateRow(row._key,"depth_to",e.target.value)}
+                          style={{...inp,width:80,fontSize:12}} placeholder="0"/>
+                      </td>
+                      <td style={{padding:"5px 8px",fontSize:13,fontWeight:700,color:dist>0?"#16a34a":"#94a3b8"}}>
+                        {dist>0?`${dist.toFixed(1)} m`:"—"}
+                      </td>
+                      <td style={{padding:"5px 4px"}}>
+                        <button onClick={()=>removeRow(row)}
+                          style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:16,lineHeight:1}}>×</button>
+                      </td>
+                    </tr>);
+                })}
+              </tbody>
+            </table>)}
+        </div>
+
+        {/* Footer */}
         <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
           <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
-          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>
+            {saving?"Saving...":"Save"}
+          </button>
         </div>
       </div>
     </div>);
 };
 
-// ── BITS (Supabase) ───────────────────────────────────────────────────────────
 const BitsPage=({nav})=>{
   const [bits,setBits]=useState([]);
   const [clients,setClients]=useState([]);
   const [contracts,setContracts]=useState([]);
   const [projects,setProjects]=useState([]);
+  const [holes,setHoles]=useState([]);
   const [loading,setLoading]=useState(true);
   const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all"),[fSize,setFSize]=useState("all");
   const [page,setPage]=useState(1),[toast,setToast]=useState("");
@@ -1525,13 +1644,15 @@ const BitsPage=({nav})=>{
   const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
   const fetchAll=useCallback(async()=>{
     setLoading(true);
-    const [b,cl,co,pr]=await Promise.all([
+    const [b,cl,co,pr,h]=await Promise.all([
       supabase.from('bits').select('*, clients(name), contracts(name), projects(name)').order('serial_number'),
       supabase.from('clients').select('id,name').order('name'),
       supabase.from('contracts').select('id,name').order('name'),
       supabase.from('projects').select('id,name').order('name'),
+      supabase.from('holes').select('id,name').order('name'),
     ]);
-    setBits(b.data||[]);setClients(cl.data||[]);setContracts(co.data||[]);setProjects(pr.data||[]);
+    setBits(b.data||[]);setClients(cl.data||[]);setContracts(co.data||[]);
+    setProjects(pr.data||[]);setHoles(h.data||[]);
     setLoading(false);
   },[]);
   useEffect(()=>{fetchAll();},[fetchAll]);
@@ -1556,7 +1677,8 @@ const BitsPage=({nav})=>{
   return(
     <div>
       <Toast msg={toast}/>
-      <BitModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchAll();doToast("✓ Kaydedildi");}} initialData={editData} clients={clients} contracts={contracts} projects={projects}/>
+      <BitModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchAll();doToast("✓ Kaydedildi");}}
+        initialData={editData} clients={clients} contracts={contracts} projects={projects} holes={holes}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Bits"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <FSel label="Status" opts={["Active","Complete-Damaged","Complete-Worn Flat","Complete-Left in Hole","Complete-Worn Inner"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}} w={155}/>
@@ -1586,7 +1708,7 @@ const BitsPage=({nav})=>{
                 <Td ch={<span style={{color:C.blue,fontSize:12}}>{r.contracts?.name||"—"}</span>}/>
                 <Td ch={r.projects?.name||"—"}/>
                 <Td ch={r.bit_size||"—"}/>
-                <Td ch={r.total_distance?`${r.total_distance} m`:"—"}/>
+                <Td ch={<strong style={{color:C.green}}>{r.total_distance?`${r.total_distance} m`:"—"}</strong>}/>
                 <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>

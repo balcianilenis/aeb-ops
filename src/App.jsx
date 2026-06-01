@@ -1723,13 +1723,126 @@ const BitsPage=({nav})=>{
     </div>);
 };
 
+// ── CONSUMABLE MODAL ─────────────────────────────────────────────────────────
+const ConsumableModal=({open,onClose,onSaved,initialData,cats})=>{
+  const [name,setName]=useState("");
+  const [catId,setCatId]=useState("");
+  const [rate,setRate]=useState("");
+  const [rateType,setRateType]=useState("");
+  const [currency,setCurrency]=useState("USD");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){
+      setName(initialData?.name||"");
+      setCatId(initialData?.category_id||"");
+      setRate(initialData?.rate||"");
+      setRateType(initialData?.rate_type||"");
+      setCurrency(initialData?.currency||"USD");
+      setError("");
+    }
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!name.trim()){setError("İsim zorunlu!");return;}
+    setSaving(true);
+    const payload={
+      name:name.trim(),category_id:catId||null,
+      rate:rate?parseFloat(rate):null,
+      rate_type:rateType||null,
+      currency:currency||"USD"
+    };
+    const r=initialData?.id
+      ?await supabase.from('consumables').update(payload).eq('id',initialData.id)
+      :await supabase.from('consumables').insert({...payload,status:'Active'});
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:480,boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Consumable":"Add Consumable"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{marginBottom:14}}><label style={l}>Consumable Name *</label>
+          <input value={name} onChange={e=>setName(e.target.value)} style={s} placeholder="e.g. HQ INNERTUBE 3M"/></div>
+        <div style={{marginBottom:14}}><label style={l}>Category</label>
+          <select value={catId} onChange={e=>setCatId(e.target.value)} style={{...s,appearance:"none"}}>
+            <option value="">Select category...</option>
+            {cats.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
+          <div><label style={l}>Rate</label>
+            <input type="number" value={rate} onChange={e=>setRate(e.target.value)} style={s} placeholder="0.00"/></div>
+          <div><label style={l}>Rate Type</label>
+            <input value={rateType} onChange={e=>setRateType(e.target.value)} style={s} placeholder="e.g. Per Unit"/></div>
+          <div><label style={l}>Currency</label>
+            <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...s,appearance:"none"}}>
+              <option>USD</option><option>SAR</option><option>EUR</option><option>AUD</option>
+            </select></div>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
+// ── CATEGORY MODAL ────────────────────────────────────────────────────────────
+const CategoryModal=({open,onClose,onSaved,initialData})=>{
+  const [name,setName]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{if(open){setName(initialData?.name||"");setError("");}},[open,initialData]);
+  const handleSave=async()=>{
+    if(!name.trim()){setError("İsim zorunlu!");return;}
+    setSaving(true);
+    const r=initialData?.id
+      ?await supabase.from('consumable_categories').update({name:name.trim()}).eq('id',initialData.id)
+      :await supabase.from('consumable_categories').insert({name:name.trim(),status:'Active'});
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:24,width:380,boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <strong style={{fontSize:15,fontWeight:700}}>{initialData?.id?"Edit Category":"Add Category"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:12}}>{error}</div>}
+        <div style={{marginBottom:16}}>
+          <label style={{display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Category Name *</label>
+          <input value={name} onChange={e=>setName(e.target.value)}
+            style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"}}
+            placeholder="e.g. HQ"/>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#7c3aed",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
 // ── CONSUMABLES (Supabase) ────────────────────────────────────────────────────
 const ConsumablesPage=({nav})=>{
   const [consumables,setConsumables]=useState([]);
   const [cats,setCats]=useState([]);
   const [loading,setLoading]=useState(true);
   const [q,setQ]=useState(""),[fCat,setFCat]=useState("all");
-  const [page,setPage]=useState(1),[showCats,setShowCats]=useState(false),[toast,setToast]=useState("");
+  const [page,setPage]=useState(1),[toast,setToast]=useState("");
+  const [showCats,setShowCats]=useState(false);
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
+  const [catModalOpen,setCatModalOpen]=useState(false),[catEditData,setCatEditData]=useState(null);
   const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
   const fetchAll=useCallback(async()=>{
     setLoading(true);
@@ -1750,7 +1863,16 @@ const ConsumablesPage=({nav})=>{
     await supabase.from('consumables').update({status:s}).eq('id',r.id);
     doToast(`✓ ${r.name} → ${s}`);fetchAll();
   };
-  const catNames=useMemo(()=>cats.map(c=>c.name),[cats]);
+  const handleCatToggle=async(cat)=>{
+    const s=cat.status==="Active"?"InActive":"Active";
+    await supabase.from('consumable_categories').update({status:s}).eq('id',cat.id);
+    doToast(`✓ ${cat.name} → ${s}`);fetchAll();
+  };
+  const handleCatDelete=async(cat)=>{
+    if(!window.confirm(`"${cat.name}" silinsin mi?`))return;
+    const {error}=await supabase.from('consumable_categories').delete().eq('id',cat.id);
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchAll();}
+  };
   const filtered=useMemo(()=>consumables.filter(r=>{
     const okC=fCat==="all"||(r.consumable_categories?.name===fCat);
     const okQ=!q||r.name?.toLowerCase().includes(q.toLowerCase());
@@ -1760,9 +1882,13 @@ const ConsumablesPage=({nav})=>{
   return(
     <div>
       <Toast msg={toast}/>
+      <ConsumableModal open={modalOpen} onClose={()=>setModalOpen(false)}
+        onSaved={()=>{fetchAll();doToast("✓ Kaydedildi");}} initialData={editData} cats={cats}/>
+      <CategoryModal open={catModalOpen} onClose={()=>setCatModalOpen(false)}
+        onSaved={()=>{fetchAll();doToast("✓ Kategori kaydedildi");}} initialData={catEditData}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Consumables"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
-        <FSel label="Category" opts={catNames} val={fCat} onChange={v=>{setFCat(v);setPage(1);}} w={170}/>
+        <FSel label="Category" opts={cats.map(c=>c.name)} val={fCat} onChange={v=>{setFCat(v);setPage(1);}} w={170}/>
         <Btn ch="Clear" onClick={()=>{setFCat("all");setPage(1);}} sm/>
         <div style={{marginLeft:"auto"}}><Btn ch="Manage Categories" variant="purple" onClick={()=>setShowCats(true)}/></div>
       </div>
@@ -1778,36 +1904,55 @@ const ConsumablesPage=({nav})=>{
             {loading?<tr><td colSpan={7} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
             :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
-                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.name}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
+                <Td ch={<>
+                  <IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/>
+                  <IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/>
+                </>}/>
                 <Td ch={<strong>{r.name}</strong>}/>
                 <Td ch={r.consumable_categories?.name||"—"}/>
-                <Td ch={r.rate||"—"}/><Td ch={r.rate_type||"—"}/><Td ch={r.currency||"—"}/>
-                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant="gray" sm onClick={()=>handleToggle(r)}/>}/>
+                <Td ch={r.rate?`${r.rate} ${r.currency||""}`:"—"}/>
+                <Td ch={r.rate_type||"—"}/>
+                <Td ch={r.currency||"—"}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"}
+                  variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
-        <button onClick={()=>doToast("Add consumable")}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
+            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
       <div style={{marginTop:10}}><Btn ch="Import Consumables" sm icon={Ic.ul}/></div>
-      <Modal open={showCats} onClose={()=>setShowCats(false)} title="Manage Categories" w={500}>
+
+      {/* Manage Categories Modal */}
+      <Modal open={showCats} onClose={()=>setShowCats(false)} title="Manage Categories" w={520}>
         <Card p={0} mb={12}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr><Th ch="Category"/><th style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,width:110}}/></tr></thead>
+            <thead><tr>
+              <Th ch="" w={60}/><Th ch="Category Name"/><Th ch="Status"/>
+              <th style={{width:100,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
+            </tr></thead>
             <tbody>
-              {cats.map(cat=>(
+              {cats.length===0?<NoRows/>:cats.map(cat=>(
                 <tr key={cat.id}>
-                  <Td ch={<span style={{fontWeight:600}}>{cat.name}</span>}/>
-                  <Td ch={<Btn ch={cat.status==="Active"?"Deactivate":"Activate"} sm onClick={()=>doToast(`${cat.name} güncellendi`)}/>}/>
+                  <Td ch={<>
+                    <IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setCatEditData(cat);setCatModalOpen(true);}}/>
+                    <IBtn icon={Ic.trash} color={C.red} onClick={()=>handleCatDelete(cat)}/>
+                  </>}/>
+                  <Td ch={<strong>{cat.name}</strong>}/>
+                  <Td ch={<Badge s={cat.status} sm/>}/>
+                  <Td ch={<Btn ch={cat.status==="Active"?"Deactivate":"Activate"}
+                    variant={cat.status==="Active"?"gray":"teal"} sm onClick={()=>handleCatToggle(cat)}/>}/>
                 </tr>))}
             </tbody>
           </table>
         </Card>
-        <button onClick={()=>doToast("Add category")}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>⊕ Add</button>
+        <button onClick={()=>{setCatEditData(null);setCatModalOpen(true);}}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
+            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>⊕ Add Category</button>
       </Modal>
     </div>);
 };

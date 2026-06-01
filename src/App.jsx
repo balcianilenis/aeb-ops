@@ -1432,23 +1432,118 @@ const DrillsPage=({nav})=>{
     </div>);
 };
 
+// ── BIT MODAL ─────────────────────────────────────────────────────────────────
+const BitModal=({open,onClose,onSaved,initialData,clients,contracts,projects})=>{
+  const [serial,setSerial]=useState("");
+  const [status,setStatus]=useState("Active");
+  const [model,setModel]=useState("");
+  const [bitSize,setBitSize]=useState("");
+  const [clientId,setClientId]=useState("");
+  const [contractId,setContractId]=useState("");
+  const [projectId,setProjectId]=useState("");
+  const [totalDist,setTotalDist]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){
+      setSerial(initialData?.serial_number||"");setStatus(initialData?.status||"Active");
+      setModel(initialData?.model||"");setBitSize(initialData?.bit_size||"");
+      setClientId(initialData?.client_id||"");setContractId(initialData?.contract_id||"");
+      setProjectId(initialData?.project_id||"");setTotalDist(initialData?.total_distance||"");
+      setError("");
+    }
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!serial.trim()){setError("Serial number zorunlu!");return;}
+    setSaving(true);
+    const payload={
+      serial_number:serial.trim(),status,model:model||null,bit_size:bitSize||null,
+      client_id:clientId||null,contract_id:contractId||null,project_id:projectId||null,
+      total_distance:totalDist?parseFloat(totalDist):0
+    };
+    const r=initialData?.id
+      ?await supabase.from('bits').update(payload).eq('id',initialData.id)
+      :await supabase.from('bits').insert(payload);
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:500,maxHeight:"85vh",overflow:"auto",boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Bit":"Add Bit"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div><label style={l}>Serial Number *</label><input value={serial} onChange={e=>setSerial(e.target.value)} style={s} placeholder="e.g. BIT-2024-001"/></div>
+          <div><label style={l}>Status</label>
+            <select value={status} onChange={e=>setStatus(e.target.value)} style={{...s,appearance:"none"}}>
+              <option>Active</option><option>Complete-Damaged</option><option>Complete-Worn Flat</option><option>Complete-Left in Hole</option><option>Complete-Worn Inner</option>
+            </select></div>
+          <div><label style={l}>Model</label><input value={model} onChange={e=>setModel(e.target.value)} style={s} placeholder="e.g. HQ3"/></div>
+          <div><label style={l}>Bit Size</label><input value={bitSize} onChange={e=>setBitSize(e.target.value)} style={s} placeholder="e.g. HQ3"/></div>
+          <div><label style={l}>Total Distance (m)</label><input type="number" value={totalDist} onChange={e=>setTotalDist(e.target.value)} style={s} placeholder="0"/></div>
+        </div>
+        <div style={{marginTop:12}}><label style={l}>Client</label>
+          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...s,appearance:"none"}}>
+            <option value="">Select...</option>
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div style={{marginTop:12}}><label style={l}>Contract</label>
+          <select value={contractId} onChange={e=>setContractId(e.target.value)} style={{...s,appearance:"none"}}>
+            <option value="">Select...</option>
+            {contracts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div style={{marginTop:12,marginBottom:20}}><label style={l}>Project</label>
+          <select value={projectId} onChange={e=>setProjectId(e.target.value)} style={{...s,appearance:"none"}}>
+            <option value="">Select...</option>
+            {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
 // ── BITS (Supabase) ───────────────────────────────────────────────────────────
 const BitsPage=({nav})=>{
   const [bits,setBits]=useState([]);
+  const [clients,setClients]=useState([]);
+  const [contracts,setContracts]=useState([]);
+  const [projects,setProjects]=useState([]);
   const [loading,setLoading]=useState(true);
   const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all"),[fSize,setFSize]=useState("all");
   const [page,setPage]=useState(1),[toast,setToast]=useState("");
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
   const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
-  const fetchBits=useCallback(async()=>{
+  const fetchAll=useCallback(async()=>{
     setLoading(true);
-    const {data}=await supabase.from('bits').select('*, clients(name), contracts(name), projects(name)').order('serial_number');
-    setBits(data||[]);setLoading(false);
+    const [b,cl,co,pr]=await Promise.all([
+      supabase.from('bits').select('*, clients(name), contracts(name), projects(name)').order('serial_number'),
+      supabase.from('clients').select('id,name').order('name'),
+      supabase.from('contracts').select('id,name').order('name'),
+      supabase.from('projects').select('id,name').order('name'),
+    ]);
+    setBits(b.data||[]);setClients(cl.data||[]);setContracts(co.data||[]);setProjects(pr.data||[]);
+    setLoading(false);
   },[]);
-  useEffect(()=>{fetchBits();},[fetchBits]);
+  useEffect(()=>{fetchAll();},[fetchAll]);
   const handleDelete=async(r)=>{
     if(!window.confirm(`"${r.serial_number}" silinsin mi?`))return;
     const {error}=await supabase.from('bits').delete().eq('id',r.id);
-    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchBits();}
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchAll();}
+  };
+  const handleToggle=async(r)=>{
+    const s=r.status==="Active"?"Complete-Damaged":"Active";
+    await supabase.from('bits').update({status:s}).eq('id',r.id);
+    doToast(`✓ ${r.serial_number} güncellendi`);fetchAll();
   };
   const sizes=useMemo(()=>uniq(bits,"bit_size").filter(Boolean),[bits]);
   const filtered=useMemo(()=>bits.filter(r=>{
@@ -1461,6 +1556,7 @@ const BitsPage=({nav})=>{
   return(
     <div>
       <Toast msg={toast}/>
+      <BitModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchAll();doToast("✓ Kaydedildi");}} initialData={editData} clients={clients} contracts={contracts} projects={projects}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Bits"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <FSel label="Status" opts={["Active","Complete-Damaged","Complete-Worn Flat","Complete-Left in Hole","Complete-Worn Inner"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}} w={155}/>
@@ -1474,14 +1570,15 @@ const BitsPage=({nav})=>{
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            <Th ch="" w={50}/><Th ch="Status"/><Th ch="Serial #"/><Th ch="Model"/>
+            <Th ch="" w={70}/><Th ch="Status"/><Th ch="Serial #"/><Th ch="Model"/>
             <Th ch="Client"/><Th ch="Contract"/><Th ch="Project"/><Th ch="Size"/><Th ch="Total Distance"/>
+            <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {loading?<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            {loading?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
             :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
-                <Td ch={<IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/>}/>
+                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
                 <Td ch={<Badge s={r.status} sm/>}/>
                 <Td ch={<strong>{r.serial_number}</strong>}/>
                 <Td ch={r.model||"—"}/>
@@ -1490,12 +1587,13 @@ const BitsPage=({nav})=>{
                 <Td ch={r.projects?.name||"—"}/>
                 <Td ch={r.bit_size||"—"}/>
                 <Td ch={r.total_distance?`${r.total_distance} m`:"—"}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
-        <button onClick={()=>doToast("Bit ekle özelliği yakında")}
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
           style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>

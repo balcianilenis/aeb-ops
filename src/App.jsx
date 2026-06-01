@@ -1007,7 +1007,7 @@ const ProjectsPage=({nav})=>{
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
     </div>);
@@ -1150,7 +1150,7 @@ const HolesPage=({nav})=>{
       </Card>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
       <div style={{display:"flex",gap:8,marginTop:10}}>
@@ -1425,7 +1425,7 @@ const DrillsPage=({nav})=>{
         <button onClick={openAdd}
           style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
             color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>
-          ⊕ Add
+          + Add
         </button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
@@ -1716,7 +1716,7 @@ const BitsPage=({nav})=>{
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
       <div style={{display:"flex",gap:8,marginTop:10}}><Btn ch="Import Bits" sm icon={Ic.ul}/></div>
@@ -1922,7 +1922,7 @@ const ConsumablesPage=({nav})=>{
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
           style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
       <div style={{marginTop:10}}><Btn ch="Import Consumables" sm icon={Ic.ul}/></div>
@@ -1952,7 +1952,7 @@ const ConsumablesPage=({nav})=>{
         </Card>
         <button onClick={()=>{setCatEditData(null);setCatModalOpen(true);}}
           style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>⊕ Add Category</button>
+            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>+ Add Category</button>
       </Modal>
     </div>);
 };
@@ -2075,7 +2075,7 @@ const EmployeesPage=({nav})=>{
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
     </div>);
@@ -2252,7 +2252,7 @@ const EquipmentPage=({nav})=>{
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
           style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
     </div>);
@@ -2304,7 +2304,7 @@ const ReportSetupPage=({nav})=>{
                 <button onClick={()=>doToast(`Add to ${cat}`)}
                   style={{padding:"8px 16px",fontSize:13,background:"none",border:"none",
                     cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
-                  ⊕ Add
+                  + Add
                 </button>
               </div>)}
           </div>);
@@ -2405,7 +2405,7 @@ const ClientsPage=({nav})=>{
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
     </div>);
@@ -2526,7 +2526,7 @@ const ContractsPage=({nav})=>{
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>{setEditData(null);setModalOpen(true);}}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>+ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
     </div>);

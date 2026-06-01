@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { supabase } from './supabase.js';
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -482,29 +483,48 @@ const HomePage=({nav})=>{
     </div>);
 };
 
-// ── DSR LIST ──────────────────────────────────────────────────────────────────
+// ── DSR LIST (Supabase) ───────────────────────────────────────────────────────
 const DSRPage=({nav})=>{
-  const [q,setQ]=useState(""),[ fStatus,setFStatus]=useState("all");
-  const [fDrill,setFDrill]=useState("all"),[fProject,setFProject]=useState("all");
-  const [fClient,setFClient]=useState("all"),[page,setPage]=useState(1);
-  const reset=()=>{setQ("");setFStatus("all");setFDrill("all");setFProject("all");setFClient("all");setPage(1);};
-  const filtered=useMemo(()=>filt(DSR_DATA,{status:fStatus,drill:fDrill,project:fProject,client:fClient},["drill","project","client","contract"],q),[q,fStatus,fDrill,fProject,fClient]);
+  const [dsrs,setDsrs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all");
+  const [fDrill,setFDrill]=useState("all"),[page,setPage]=useState(1),[toast,setToast]=useState("");
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+
+  const fetchDsrs=useCallback(async()=>{
+    setLoading(true);
+    const {data,error}=await supabase.from('daily_shift_reports')
+      .select('*, drills(name), contracts(name), projects(name), clients(name)')
+      .order('report_date',{ascending:false});
+    if(error)doToast("Hata: "+error.message);
+    else setDsrs(data||[]);
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{fetchDsrs();},[fetchDsrs]);
+
+  const drillNames=useMemo(()=>[...new Set(dsrs.map(r=>r.drills?.name).filter(Boolean))],[dsrs]);
+  const filtered=useMemo(()=>dsrs.filter(r=>{
+    const okS=fStatus==="all"||r.status===fStatus;
+    const okD=fDrill==="all"||(r.drills?.name===fDrill);
+    const okQ=!q||r.drills?.name?.toLowerCase().includes(q.toLowerCase())||r.projects?.name?.toLowerCase().includes(q.toLowerCase());
+    return okS&&okD&&okQ;
+  }),[dsrs,fStatus,fDrill,q]);
   const {items,total}=pg(filtered,page,10);
+
   return(
     <div>
+      <Toast msg={toast}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Daily Shift Report"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
-        <span style={{color:C.textMut}}>{Ic.filt}</span>
-        <FSel label="Status" opts={uniq(DSR_DATA,"status")} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}} w={160}/>
-        <FSel label="Drill Name" opts={uniq(DSR_DATA,"drill")} val={fDrill} onChange={v=>{setFDrill(v);setPage(1);}} w={120}/>
-        <FSel label="Project" opts={uniq(DSR_DATA,"project")} val={fProject} onChange={v=>{setFProject(v);setPage(1);}} w={210}/>
-        <FSel label="Client" opts={uniq(DSR_DATA,"client")} val={fClient} onChange={v=>{setFClient(v);setPage(1);}} w={160}/>
-        <Btn ch="Reset" onClick={reset} sm/>
+        <FSel label="Status" opts={["PENDING APPROVAL","APPROVED","VALIDATED","REJECTED"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}} w={160}/>
+        <FSel label="Drill Name" opts={drillNames} val={fDrill} onChange={v=>{setFDrill(v);setPage(1);}} w={120}/>
+        <Btn ch="Reset" onClick={()=>{setQ("");setFStatus("all");setFDrill("all");setPage(1);}} sm/>
         <div style={{marginLeft:"auto"}}><Btn ch="Bulk Export" sm icon={Ic.dl}/></div>
       </div>
       <div style={{marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
         <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/>
-        <span style={{fontSize:12,color:C.textMut}}>{total} entries</span>
+        <span style={{fontSize:12,color:C.textMut}}>{loading?"Loading...":total+" entries"}</span>
       </div>
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -515,24 +535,21 @@ const DSRPage=({nav})=>{
             <th style={{width:40,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
-              <tr key={r.id} style={{cursor:"pointer",transition:"background .1s"}}
-                onClick={()=>nav("dsr-summary",{id:r.id,drill:r.drill,date:r.date})}
+            {loading?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
+              <tr key={r.id} style={{cursor:"pointer"}}
+                onClick={()=>nav("dsr-summary",{id:r.id,drill:r.drills?.name||"—",date:r.report_date})}
                 onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
                 onMouseLeave={e=>e.currentTarget.style.background=""}>
                 <Td ch={<input type="checkbox" onClick={e=>e.stopPropagation()}/>}/>
-                <Td ch={<span style={{
-                  background:r.shift==="DAY"?"#fef9c3":"#dbeafe",
-                  color:r.shift==="DAY"?"#713f12":"#1e40af",
-                  padding:"3px 10px",borderRadius:12,fontSize:11,fontWeight:700,letterSpacing:.5}}>
-                  {r.shift}</span>}/>
-                <Td ch={<span style={{fontWeight:500}}>{r.date}</span>}/>
+                <Td ch={<span style={{background:r.shift==="DAY"?"#fef9c3":"#dbeafe",color:r.shift==="DAY"?"#713f12":"#1e40af",padding:"3px 10px",borderRadius:12,fontSize:11,fontWeight:700}}>{r.shift}</span>}/>
+                <Td ch={<span style={{fontWeight:500}}>{r.report_date}</span>}/>
                 <Td ch={<Badge s={r.status}/>}/>
-                <Td ch={<span style={{color:C.blue,fontWeight:700}}>{r.drill}</span>}/>
-                <Td ch={<span style={{color:C.blue,cursor:"pointer",fontSize:12}}>{r.contract}</span>}/>
-                <Td ch={<span style={{color:C.blue,cursor:"pointer"}}>{r.project}</span>}/>
-                <Td ch={r.client}/>
-                <Td ch={r.dist}/>
+                <Td ch={<span style={{color:C.blue,fontWeight:700}}>{r.drills?.name||"—"}</span>}/>
+                <Td ch={<span style={{color:C.blue,fontSize:12}}>{r.contracts?.name||"—"}</span>}/>
+                <Td ch={<span style={{color:C.blue}}>{r.projects?.name||"—"}</span>}/>
+                <Td ch={r.clients?.name||"—"}/>
+                <Td ch={r.total_distance_drilled||0}/>
                 <Td ch={<IBtn icon={Ic.dl} color={C.textMut} onClick={e=>e.stopPropagation()}/>}/>
               </tr>))}
           </tbody>
@@ -844,109 +861,300 @@ const TimesheetPage=({nav})=>{
 };
 
 
-// ── PROJECTS ──────────────────────────────────────────────────────────────────
+// ── PROJECT MODAL ─────────────────────────────────────────────────────────────
+const ProjectModal=({open,onClose,onSaved,initialData,clients,contracts})=>{
+  const [name,setName]=useState("");
+  const [status,setStatus]=useState("Active");
+  const [clientId,setClientId]=useState("");
+  const [contractId,setContractId]=useState("");
+  const [location,setLocation]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){
+      setName(initialData?.name||"");setStatus(initialData?.status||"Active");
+      setClientId(initialData?.client_id||"");setContractId(initialData?.contract_id||"");
+      setLocation(initialData?.location||"");setError("");
+    }
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!name.trim()){setError("Project name zorunlu!");return;}
+    setSaving(true);
+    const payload={name:name.trim(),status,client_id:clientId||null,contract_id:contractId||null,location:location||null};
+    const r=initialData?.id
+      ?await supabase.from('projects').update(payload).eq('id',initialData.id)
+      :await supabase.from('projects').insert(payload);
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const inpStyle={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const lblStyle={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:500,boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Project":"Add Project"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{marginBottom:14}}><label style={lblStyle}>Project Name *</label><input value={name} onChange={e=>setName(e.target.value)} style={inpStyle} placeholder="e.g. MM Cluster"/></div>
+        <div style={{marginBottom:14}}><label style={lblStyle}>Status</label>
+          <select value={status} onChange={e=>setStatus(e.target.value)} style={{...inpStyle,appearance:"none"}}>
+            <option>Active</option><option>InActive</option>
+          </select></div>
+        <div style={{marginBottom:14}}><label style={lblStyle}>Client</label>
+          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...inpStyle,appearance:"none"}}>
+            <option value="">Select client...</option>
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div style={{marginBottom:14}}><label style={lblStyle}>Contract</label>
+          <select value={contractId} onChange={e=>setContractId(e.target.value)} style={{...inpStyle,appearance:"none"}}>
+            <option value="">Select contract...</option>
+            {contracts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div style={{marginBottom:20}}><label style={lblStyle}>Location</label><input value={location} onChange={e=>setLocation(e.target.value)} style={inpStyle} placeholder="e.g. MM Area"/></div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
+// ── PROJECTS (Supabase) ───────────────────────────────────────────────────────
 const ProjectsPage=({nav})=>{
-  const [q,setQ]=useState(""),[ fStatus,setFStatus]=useState("all");
-  const [fClient,setFClient]=useState("all"),[fContract,setFContract]=useState("all");
-  const [page,setPage]=useState(1);
-  const reset=()=>{setQ("");setFStatus("all");setFClient("all");setFContract("all");setPage(1);};
-  const filtered=useMemo(()=>filt(PROJECTS_DATA,{status:fStatus,client:fClient,contract:fContract},["name","client","contract","location"],q),[q,fStatus,fClient,fContract]);
+  const [projects,setProjects]=useState([]);
+  const [clients,setClients]=useState([]);
+  const [contracts,setContracts]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all");
+  const [fClient,setFClient]=useState("all");
+  const [page,setPage]=useState(1),[toast,setToast]=useState("");
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+
+  const fetchAll=useCallback(async()=>{
+    setLoading(true);
+    const [pr,cl,co]=await Promise.all([
+      supabase.from('projects').select('*, clients(name), contracts(name)').order('name'),
+      supabase.from('clients').select('id,name').order('name'),
+      supabase.from('contracts').select('id,name').order('name'),
+    ]);
+    setProjects(pr.data||[]);setClients(cl.data||[]);setContracts(co.data||[]);
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{fetchAll();},[fetchAll]);
+
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.name}" silinsin mi?`))return;
+    const {error}=await supabase.from('projects').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);
+    else{doToast(`✓ ${r.name} silindi`);fetchAll();}
+  };
+
+  const handleToggle=async(r)=>{
+    const s=r.status==='Active'?'InActive':'Active';
+    await supabase.from('projects').update({status:s}).eq('id',r.id);
+    doToast(`✓ ${r.name} → ${s}`);fetchAll();
+  };
+
+  const clientNames=useMemo(()=>uniq(projects.map(p=>({client:p.clients?.name})),"client").filter(Boolean),[projects]);
+  const filtered=useMemo(()=>projects.filter(r=>{
+    const okS=fStatus==="all"||r.status===fStatus;
+    const okC=fClient==="all"||(r.clients?.name===fClient);
+    const okQ=!q||r.name?.toLowerCase().includes(q.toLowerCase())||r.location?.toLowerCase().includes(q.toLowerCase());
+    return okS&&okC&&okQ;
+  }),[projects,fStatus,fClient,q]);
   const {items,total}=pg(filtered,page,10);
+
   return(
     <div>
+      <Toast msg={toast}/>
+      <ProjectModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchAll();doToast("✓ Kaydedildi");}} initialData={editData} clients={clients} contracts={contracts}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Projects"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
-        <span style={{color:C.textMut,fontSize:12}}>{Ic.filt}</span>
-        <FSel label="Status" opts={uniq(PROJECTS_DATA,"status")} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}}/>
-        <FSel label="Client" opts={uniq(PROJECTS_DATA,"client")} val={fClient} onChange={v=>{setFClient(v);setPage(1);}} w={150}/>
-        <FSel label="Contract" opts={uniq(PROJECTS_DATA,"contract")} val={fContract} onChange={v=>{setFContract(v);setPage(1);}} w={260}/>
-        <Btn ch="Clear" onClick={reset} sm/>
+        <FSel label="Status" opts={["Active","InActive"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}}/>
+        <FSel label="Client" opts={clientNames} val={fClient} onChange={v=>{setFClient(v);setPage(1);}} w={160}/>
+        <Btn ch="Clear" onClick={()=>{setQ("");setFStatus("all");setFClient("all");setPage(1);}} sm/>
       </div>
       <div style={{marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
         <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/>
-        <span style={{fontSize:12,color:C.textMut}}>{total} entries</span>
+        <span style={{fontSize:12,color:C.textMut}}>{loading?"Loading...":total+" entries"}</span>
       </div>
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            <Th ch="Status"/><Th ch="ID"/><Th ch="Client"/><Th ch="Contract"/><Th ch="Location"/><Th ch="# of Holes"/>
+            <Th ch="" w={70}/><Th ch="Status"/><Th ch="Project Name"/><Th ch="Client"/><Th ch="Contract"/><Th ch="Location"/>
+            <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
+            {loading?<tr><td colSpan={7} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
+                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
                 <Td ch={<Badge s={r.status} sm/>}/>
                 <Td ch={<span style={{color:C.blue,fontWeight:700,cursor:"pointer"}} onClick={()=>nav("holes")}>{r.name}</span>}/>
-                <Td ch={r.client}/>
-                <Td ch={<span style={{color:C.blue,cursor:"pointer",fontSize:12}}>{r.contract}</span>}/>
+                <Td ch={r.clients?.name||"—"}/>
+                <Td ch={<span style={{color:C.blue,fontSize:12}}>{r.contracts?.name||"—"}</span>}/>
                 <Td ch={r.location||"—"}/>
-                <Td ch={<strong>{r.holes}</strong>}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
-      <Pager page={page} setPage={setPage} per={10} total={total}/>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+        <Pager page={page} setPage={setPage} per={10} total={total}/>
+      </div>
     </div>);
 };
 
-// ── HOLES ─────────────────────────────────────────────────────────────────────
+// ── HOLE MODAL ────────────────────────────────────────────────────────────────
+const HoleModal=({open,onClose,onSaved,initialData,clients,contracts,projects})=>{
+  const [name,setName]=useState("");
+  const [status,setStatus]=useState("Active");
+  const [clientId,setClientId]=useState("");
+  const [contractId,setContractId]=useState("");
+  const [projectId,setProjectId]=useState("");
+  const [maxDepth,setMaxDepth]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){
+      setName(initialData?.name||"");setStatus(initialData?.status||"Active");
+      setClientId(initialData?.client_id||"");setContractId(initialData?.contract_id||"");
+      setProjectId(initialData?.project_id||"");setMaxDepth(initialData?.max_depth||"");setError("");
+    }
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!name.trim()){setError("ID zorunlu!");return;}
+    setSaving(true);
+    const payload={name:name.trim(),status,client_id:clientId||null,contract_id:contractId||null,project_id:projectId||null,max_depth:maxDepth||null};
+    const r=initialData?.id?await supabase.from('holes').update(payload).eq('id',initialData.id):await supabase.from('holes').insert(payload);
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:500,maxHeight:"85vh",overflow:"auto",boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Hole":"Add Hole"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{marginBottom:14}}><label style={l}>Hole ID *</label><input value={name} onChange={e=>setName(e.target.value)} style={s} placeholder="e.g. UQ_GT26_004_R1"/></div>
+        <div style={{marginBottom:14}}><label style={l}>Status</label><select value={status} onChange={e=>setStatus(e.target.value)} style={{...s,appearance:"none"}}><option>Active</option><option>Complete</option><option>Abandoned</option><option>Planned</option><option>Cancelled</option></select></div>
+        <div style={{marginBottom:14}}><label style={l}>Client</label><select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...s,appearance:"none"}}><option value="">Select...</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div style={{marginBottom:14}}><label style={l}>Contract</label><select value={contractId} onChange={e=>setContractId(e.target.value)} style={{...s,appearance:"none"}}><option value="">Select...</option>{contracts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div style={{marginBottom:14}}><label style={l}>Project</label><select value={projectId} onChange={e=>setProjectId(e.target.value)} style={{...s,appearance:"none"}}><option value="">Select...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+        <div style={{marginBottom:20}}><label style={l}>Max Depth (m)</label><input type="number" value={maxDepth} onChange={e=>setMaxDepth(e.target.value)} style={s} placeholder="e.g. 204"/></div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
+// ── HOLES (Supabase) ──────────────────────────────────────────────────────────
 const HolesPage=({nav})=>{
-  const [q,setQ]=useState(""),[ fStatus,setFStatus]=useState("all");
-  const [fContract,setFContract]=useState("all"),[fClient,setFClient]=useState("all");
+  const [holes,setHoles]=useState([]);
+  const [clients,setClients]=useState([]);
+  const [contracts,setContracts]=useState([]);
+  const [projects,setProjects]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all");
   const [page,setPage]=useState(1),[toast,setToast]=useState("");
-  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2200);};
-  const reset=()=>{setQ("");setFStatus("all");setFContract("all");setFClient("all");setPage(1);};
-  const filtered=useMemo(()=>filt(HOLES_DATA,{status:fStatus,contract:fContract,client:fClient},["hole","client","contract","project"],q),[q,fStatus,fContract,fClient]);
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+
+  const fetchAll=useCallback(async()=>{
+    setLoading(true);
+    const [h,cl,co,pr]=await Promise.all([
+      supabase.from('holes').select('*, clients(name), contracts(name), projects(name)').order('name'),
+      supabase.from('clients').select('id,name').order('name'),
+      supabase.from('contracts').select('id,name').order('name'),
+      supabase.from('projects').select('id,name').order('name'),
+    ]);
+    setHoles(h.data||[]);setClients(cl.data||[]);setContracts(co.data||[]);setProjects(pr.data||[]);
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{fetchAll();},[fetchAll]);
+
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.name}" silinsin mi?`))return;
+    const {error}=await supabase.from('holes').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);
+    else{doToast(`✓ ${r.name} silindi`);fetchAll();}
+  };
+
+  const handleToggle=async(r)=>{
+    const s=r.status==='Active'?'Complete':'Active';
+    await supabase.from('holes').update({status:s}).eq('id',r.id);
+    doToast(`✓ ${r.name} → ${s}`);fetchAll();
+  };
+
+  const filtered=useMemo(()=>holes.filter(r=>{
+    const okS=fStatus==="all"||r.status===fStatus;
+    const okQ=!q||r.name?.toLowerCase().includes(q.toLowerCase());
+    return okS&&okQ;
+  }),[holes,fStatus,q]);
   const {items,total}=pg(filtered,page,10);
+
   return(
     <div>
       <Toast msg={toast}/>
+      <HoleModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchAll();doToast("✓ Kaydedildi");}} initialData={editData} clients={clients} contracts={contracts} projects={projects}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Holes"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
-        <span style={{color:C.textMut,fontSize:12}}>{Ic.filt}</span>
         <FSel label="Status" opts={["Active","Complete","Abandoned","Planned","Cancelled"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}}/>
-        <FSel label="Contract" opts={uniq(HOLES_DATA,"contract")} val={fContract} onChange={v=>{setFContract(v);setPage(1);}} w={260}/>
-        <FSel label="Client" opts={uniq(HOLES_DATA,"client")} val={fClient} onChange={v=>{setFClient(v);setPage(1);}} w={150}/>
-        <Btn ch="Clear" onClick={reset} sm/>
+        <Btn ch="Clear" onClick={()=>{setQ("");setFStatus("all");setPage(1);}} sm/>
       </div>
       <div style={{marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
         <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}} placeholder="Search holes..."/>
-        <span style={{fontSize:12,color:C.textMut}}>{total} entries</span>
+        <span style={{fontSize:12,color:C.textMut}}>{loading?"Loading...":total+" entries"}</span>
       </div>
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
             <Th ch="" w={70}/><Th ch="Status"/><Th ch="ID"/>
             <Th ch="Client"/><Th ch="Contract"/><Th ch="Project"/>
-            <Th ch="Depth"/><Th ch="Last Activity Date"/>
+            <Th ch="Max Depth"/><Th ch="Last Activity"/>
             <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
+            {loading?<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
-                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.hole}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted ${r.hole}`)}/></>}/>
+                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
                 <Td ch={<Badge s={r.status} sm/>}/>
-                <Td ch={<span style={{color:C.blue,fontWeight:700,cursor:"pointer"}} onClick={()=>nav("hole-detail",{hole:r.hole})}>{r.hole}</span>}/>
-                <Td ch={r.client}/>
-                <Td ch={<span style={{color:C.blue,fontSize:12}}>{r.contract}</span>}/>
-                <Td ch={<span style={{color:C.blue}}>{r.project}</span>}/>
-                <Td ch={<strong>{r.maxDepth}</strong>}/>
-                <Td ch={r.lastActivity}/>
-                <Td ch={<Btn ch="Reactivate" variant="teal" sm onClick={()=>doToast(`${r.hole} reactivated`)}/>}/>
+                <Td ch={<span style={{color:C.blue,fontWeight:700,cursor:"pointer"}} onClick={()=>nav("hole-detail",{hole:r.name})}>{r.name}</span>}/>
+                <Td ch={r.clients?.name||"—"}/>
+                <Td ch={<span style={{color:C.blue,fontSize:12}}>{r.contracts?.name||"—"}</span>}/>
+                <Td ch={r.projects?.name||"—"}/>
+                <Td ch={r.max_depth?`${r.max_depth} m`:"—"}/>
+                <Td ch={r.last_activity_date||"—"}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Complete":"Reactivate"} variant={r.status==="Active"?"teal":"gray"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <button onClick={()=>doToast("Add hole")}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>
-          ⊕ Add
-        </button>
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
       <div style={{display:"flex",gap:8,marginTop:10}}>
         <Btn ch="Import Holes" sm icon={Ic.ul}/>
-        <Btn ch="Combine Holes" variant="teal" sm/>
         <Btn ch="Export Holes" sm icon={Ic.dl}/>
       </div>
     </div>);
@@ -1021,74 +1229,234 @@ const HoleDetailPage=({nav,params})=>{
     </div>);
 };
 
-// ── DRILLING RIGS ─────────────────────────────────────────────────────────────
+// ── DRILL MODAL (standalone — kendi state'i var, focus sorunu olmaz) ──────────
+const DrillModal=({open,onClose,onSaved,initialData})=>{
+  const [name,setName]=useState("");
+  const [type,setType]=useState("");
+  const [make,setMake]=useState("");
+  const [model,setModel]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+
+  useEffect(()=>{
+    if(open){
+      setName(initialData?.name||"");
+      setType(initialData?.drill_type||"");
+      setMake(initialData?.make||"");
+      setModel(initialData?.model||"");
+      setError("");
+    }
+  },[open,initialData]);
+
+  const handleSave=async()=>{
+    if(!name.trim()){setError("ID zorunlu!");return;}
+    setSaving(true);
+    let err;
+    if(initialData?.id){
+      const r=await supabase.from('drills').update({
+        name:name.trim(),drill_type:type||null,make:make||null,model:model||null
+      }).eq('id',initialData.id);
+      err=r.error;
+    } else {
+      const r=await supabase.from('drills').insert({
+        name:name.trim(),drill_type:type||null,make:make||null,model:model||null,status:'Active'
+      });
+      err=r.error;
+    }
+    setSaving(false);
+    if(err){setError(err.message);return;}
+    onSaved();
+    onClose();
+  };
+
+  if(!open)return null;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",
+      display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(2px)"}}
+      onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:480,
+        boxShadow:"0 24px 48px rgba(15,23,42,.2)",border:"1px solid #e2e8f0"}}
+        onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700,color:"#0f172a"}}>
+            {initialData?.id?"Edit Drilling Rig":"Add Drilling Rig"}
+          </strong>
+          <button onClick={onClose}
+            style={{background:"#f1f5f9",border:"none",cursor:"pointer",
+              width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",
+          borderRadius:6,fontSize:12,marginBottom:14,border:"1px solid #fecdd3"}}>{error}</div>}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:11,fontWeight:700,color:"#334155",
+            marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>ID *</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. BT-25"
+            style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",
+              borderRadius:7,boxSizing:"border-box",outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:11,fontWeight:700,color:"#334155",
+            marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Type</label>
+          <select value={type} onChange={e=>setType(e.target.value)}
+            style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",
+              borderRadius:7,boxSizing:"border-box",appearance:"none"}}>
+            <option value="">Select...</option>
+            <option>Surface - Coring</option>
+            <option>Underground - Coring</option>
+            <option>Reverse Circulation</option>
+          </select>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:11,fontWeight:700,color:"#334155",
+            marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Brand</label>
+          <input value={make} onChange={e=>setMake(e.target.value)} placeholder="e.g. Boretech"
+            style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",
+              borderRadius:7,boxSizing:"border-box",outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label style={{display:"block",fontSize:11,fontWeight:700,color:"#334155",
+            marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Made By</label>
+          <input value={model} onChange={e=>setModel(e.target.value)} placeholder="e.g. BT2500"
+            style={{width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",
+              borderRadius:7,boxSizing:"border-box",outline:"none"}}/>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose}
+            style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",
+              color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",
+              color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>
+            {saving?"Saving...":"Save"}
+          </button>
+        </div>
+      </div>
+    </div>);
+};
+
+// ── DRILLING RIGS (Supabase connected) ───────────────────────────────────────
 const DrillsPage=({nav})=>{
+  const [drills,setDrills]=useState([]);
+  const [loading,setLoading]=useState(true);
   const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all");
   const [fType,setFType]=useState("all"),[fMake,setFMake]=useState("all");
-  const [page,setPage]=useState(1),[toast,setToast]=useState(""),[ showAdd,setShowAdd]=useState(false);
-  const [form,setForm]=useState({});
-  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2200);};
+  const [page,setPage]=useState(1),[toast,setToast]=useState("");
+  const [modalOpen,setModalOpen]=useState(false);
+  const [editData,setEditData]=useState(null);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+
+  const fetchDrills=useCallback(async()=>{
+    setLoading(true);
+    const {data,error}=await supabase.from('drills').select('*').order('name');
+    if(error)doToast("Hata: "+error.message);
+    else setDrills(data||[]);
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{fetchDrills();},[fetchDrills]);
+
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.name}" silinsin mi?`))return;
+    const {error}=await supabase.from('drills').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);
+    else{doToast(`✓ ${r.name} silindi`);fetchDrills();}
+  };
+
+  const handleToggle=async(r)=>{
+    const newStatus=r.status==='Active'?'InActive':'Active';
+    const {error}=await supabase.from('drills').update({status:newStatus}).eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);
+    else{doToast(`✓ ${r.name} → ${newStatus}`);fetchDrills();}
+  };
+
+  const openAdd=()=>{setEditData(null);setModalOpen(true);};
+  const openEdit=(r)=>{setEditData(r);setModalOpen(true);};
+  const onSaved=()=>{doToast("✓ Kaydedildi");fetchDrills();};
+
   const reset=()=>{setQ("");setFStatus("all");setFType("all");setFMake("all");setPage(1);};
-  const filtered=useMemo(()=>filt(DRILLS_DATA,{status:fStatus,type:fType,make:fMake},["name","type","make","model","serial"],q),[q,fStatus,fType,fMake]);
+  const filtered=useMemo(()=>filt(drills,{status:fStatus,drill_type:fType,make:fMake},["name","drill_type","make","model"],q),[drills,q,fStatus,fType,fMake]);
   const {items,total}=pg(filtered,page,10);
+  const brands=useMemo(()=>uniq(drills,"make").filter(Boolean),[drills]);
+
   return(
     <div>
       <Toast msg={toast}/>
+      <DrillModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={onSaved} initialData={editData}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Drilling Rigs"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <FSel label="Status" opts={["Active","InActive"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}}/>
         <FSel label="Type" opts={["Reverse Circulation","Surface - Coring","Underground - Coring"]} val={fType} onChange={v=>{setFType(v);setPage(1);}} w={180}/>
-        <FSel label="Brand" opts={uniq(DRILLS_DATA,"make").filter(Boolean)} val={fMake} onChange={v=>{setFMake(v);setPage(1);}}/>
+        <FSel label="Brand" opts={brands} val={fMake} onChange={v=>{setFMake(v);setPage(1);}}/>
         <Btn ch="Clear" onClick={reset} sm/>
       </div>
       <div style={{marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
         <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/>
-        <span style={{fontSize:12,color:C.textMut}}>{total} entries</span>
+        <span style={{fontSize:12,color:C.textMut}}>{loading?"Loading...":total+" entries"}</span>
       </div>
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            <Th ch="" w={70}/><Th ch="ID"/><Th ch="Type"/><Th ch="Brand"/><Th ch="Made By"/>
+            <Th ch="" w={70}/><Th ch="ID"/><Th ch="Type"/><Th ch="Brand"/><Th ch="Made By"/><Th ch="Status"/>
             <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
+            {loading?(
+              <tr><td colSpan={7} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            ):items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
-                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.name}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted ${r.name}`)}/></>}/>
-                <Td ch={<strong>{r.name}</strong>}/><Td ch={r.type}/>
-                <Td ch={r.make||"—"}/><Td ch={r.model||"—"}/>
-                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant="gray" sm onClick={()=>doToast(`${r.name} updated`)}/>}/>
+                <Td ch={<>
+                  <IBtn icon={Ic.edit} color={C.teal} onClick={()=>openEdit(r)}/>
+                  <IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/>
+                </>}/>
+                <Td ch={<strong>{r.name}</strong>}/>
+                <Td ch={r.drill_type||"—"}/>
+                <Td ch={r.make||"—"}/>
+                <Td ch={r.model||"—"}/>
+                <Td ch={<Badge s={r.status} sm/>}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"}
+                  variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <button onClick={()=>setShowAdd(true)}
+        <button onClick={openAdd}
           style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>
+          ⊕ Add
+        </button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
-      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add Drilling Rig">
-        <FRow label="ID"><FInput value={form.name} onChange={v=>setForm({...form,name:v})} placeholder="e.g. BT-25"/></FRow>
-        <FRow label="Type"><FSelect value={form.type} onChange={v=>setForm({...form,type:v})} opts={["Surface - Coring","Underground - Coring","Reverse Circulation"]}/></FRow>
-        <FRow label="Brand"><FInput value={form.make} onChange={v=>setForm({...form,make:v})} placeholder="e.g. Boretech"/></FRow>
-        <FRow label="Made By"><FInput value={form.model} onChange={v=>setForm({...form,model:v})} placeholder="e.g. BT2500"/></FRow>
-        <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
-          <Btn ch="Cancel" onClick={()=>setShowAdd(false)} sm/>
-          <Btn ch="Save" variant="primary" sm onClick={()=>{setShowAdd(false);doToast("Drilling rig saved");setForm({});}}/>
-        </div>
-      </Modal>
     </div>);
 };
 
-// ── BITS ──────────────────────────────────────────────────────────────────────
+// ── BITS (Supabase) ───────────────────────────────────────────────────────────
 const BitsPage=({nav})=>{
-  const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all");
-  const [fModel,setFModel]=useState("all"),[fSize,setFSize]=useState("all");
+  const [bits,setBits]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState(""),[fStatus,setFStatus]=useState("all"),[fSize,setFSize]=useState("all");
   const [page,setPage]=useState(1),[toast,setToast]=useState("");
-  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2200);};
-  const reset=()=>{setQ("");setFStatus("all");setFModel("all");setFSize("all");setPage(1);};
-  const filtered=useMemo(()=>filt(BITS_DATA,{status:fStatus,model:fModel,size:fSize},["serial","model","project","client"],q),[q,fStatus,fModel,fSize]);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+  const fetchBits=useCallback(async()=>{
+    setLoading(true);
+    const {data}=await supabase.from('bits').select('*, clients(name), contracts(name), projects(name)').order('serial_number');
+    setBits(data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{fetchBits();},[fetchBits]);
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.serial_number}" silinsin mi?`))return;
+    const {error}=await supabase.from('bits').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchBits();}
+  };
+  const sizes=useMemo(()=>uniq(bits,"bit_size").filter(Boolean),[bits]);
+  const filtered=useMemo(()=>bits.filter(r=>{
+    const okS=fStatus==="all"||r.status===fStatus;
+    const okSz=fSize==="all"||r.bit_size===fSize;
+    const okQ=!q||r.serial_number?.toLowerCase().includes(q.toLowerCase())||r.model?.toLowerCase().includes(q.toLowerCase());
+    return okS&&okSz&&okQ;
+  }),[bits,fStatus,fSize,q]);
   const {items,total}=pg(filtered,page,10);
   return(
     <div>
@@ -1096,67 +1464,87 @@ const BitsPage=({nav})=>{
       <Crumb items={[{label:"Home",page:"home"},{label:"Bits"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <FSel label="Status" opts={["Active","Complete-Damaged","Complete-Worn Flat","Complete-Left in Hole","Complete-Worn Inner"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}} w={155}/>
-        <FSel label="Model" opts={uniq(BITS_DATA,"model").filter(Boolean)} val={fModel} onChange={v=>{setFModel(v);setPage(1);}}/>
-        <FSel label="Client" opts={uniq(BITS_DATA,"client")} val="all" onChange={()=>{}} w={150}/>
-        <FSel label="Contract" opts={uniq(BITS_DATA,"contract")} val="all" onChange={()=>{}} w={240}/>
-        <FSel label="Project" opts={uniq(BITS_DATA,"project")} val="all" onChange={()=>{}} w={150}/>
-        <FSel label="Size" opts={uniq(BITS_DATA,"size")} val={fSize} onChange={v=>{setFSize(v);setPage(1);}} w={110}/>
-        <Btn ch="Clear" onClick={reset} sm/>
+        <FSel label="Size" opts={sizes} val={fSize} onChange={v=>{setFSize(v);setPage(1);}} w={110}/>
+        <Btn ch="Clear" onClick={()=>{setQ("");setFStatus("all");setFSize("all");setPage(1);}} sm/>
       </div>
       <div style={{marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
         <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/>
-        <span style={{fontSize:12,color:C.textMut}}>{total} entries</span>
+        <span style={{fontSize:12,color:C.textMut}}>{loading?"Loading...":total+" entries"}</span>
       </div>
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
-            <Th ch="Status"/><Th ch="Serial #"/><Th ch="Model"/>
-            <Th ch="Client"/><Th ch="Contract"/><Th ch="Project"/>
-            <Th ch="Size"/><Th ch="Total Distance"/>
+            <Th ch="" w={50}/><Th ch="Status"/><Th ch="Serial #"/><Th ch="Model"/>
+            <Th ch="Client"/><Th ch="Contract"/><Th ch="Project"/><Th ch="Size"/><Th ch="Total Distance"/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
+            {loading?<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
+                <Td ch={<IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/>}/>
                 <Td ch={<Badge s={r.status} sm/>}/>
-                <Td ch={<strong>{r.serial}</strong>}/><Td ch={r.model}/>
-                <Td ch={r.client}/>
-                <Td ch={<span style={{color:C.blue,fontSize:12}}>{r.contract}</span>}/>
-                <Td ch={r.project}/><Td ch={r.size}/><Td ch={<strong>{r.totalDist}</strong>}/>
+                <Td ch={<strong>{r.serial_number}</strong>}/>
+                <Td ch={r.model||"—"}/>
+                <Td ch={r.clients?.name||"—"}/>
+                <Td ch={<span style={{color:C.blue,fontSize:12}}>{r.contracts?.name||"—"}</span>}/>
+                <Td ch={r.projects?.name||"—"}/>
+                <Td ch={r.bit_size||"—"}/>
+                <Td ch={r.total_distance?`${r.total_distance} m`:"—"}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <button onClick={()=>doToast("Add bit")}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <button onClick={()=>doToast("Bit ekle özelliği yakında")}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
-      <div style={{display:"flex",gap:8,marginTop:10}}>
-        <Btn ch="Show Multiselect" sm icon={Ic.check}/>
-        <Btn ch="Import Bits" sm icon={Ic.ul}/>
-      </div>
+      <div style={{display:"flex",gap:8,marginTop:10}}><Btn ch="Import Bits" sm icon={Ic.ul}/></div>
     </div>);
 };
 
-// ── CONSUMABLES ───────────────────────────────────────────────────────────────
+// ── CONSUMABLES (Supabase) ────────────────────────────────────────────────────
 const ConsumablesPage=({nav})=>{
+  const [consumables,setConsumables]=useState([]);
+  const [cats,setCats]=useState([]);
+  const [loading,setLoading]=useState(true);
   const [q,setQ]=useState(""),[fCat,setFCat]=useState("all");
-  const [page,setPage]=useState(1),[showCats,setShowCats]=useState(false);
-  const [toast,setToast]=useState(""),[cats,setCats]=useState(CONSUMABLE_CATS);
-  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2200);};
-  const filtered=useMemo(()=>filt(CONSUMABLES_DATA,{category:fCat},["name","category"],q),[q,fCat]);
+  const [page,setPage]=useState(1),[showCats,setShowCats]=useState(false),[toast,setToast]=useState("");
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+  const fetchAll=useCallback(async()=>{
+    setLoading(true);
+    const [c,ca]=await Promise.all([
+      supabase.from('consumables').select('*, consumable_categories(name)').order('name'),
+      supabase.from('consumable_categories').select('id,name,status').order('name'),
+    ]);
+    setConsumables(c.data||[]);setCats(ca.data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{fetchAll();},[fetchAll]);
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.name}" silinsin mi?`))return;
+    const {error}=await supabase.from('consumables').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchAll();}
+  };
+  const handleToggle=async(r)=>{
+    const s=r.status==="Active"?"InActive":"Active";
+    await supabase.from('consumables').update({status:s}).eq('id',r.id);
+    doToast(`✓ ${r.name} → ${s}`);fetchAll();
+  };
+  const catNames=useMemo(()=>cats.map(c=>c.name),[cats]);
+  const filtered=useMemo(()=>consumables.filter(r=>{
+    const okC=fCat==="all"||(r.consumable_categories?.name===fCat);
+    const okQ=!q||r.name?.toLowerCase().includes(q.toLowerCase());
+    return okC&&okQ;
+  }),[consumables,fCat,q]);
   const {items,total}=pg(filtered,page,10);
   return(
     <div>
       <Toast msg={toast}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Consumables"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
-        <FSel label="Category" opts={cats.map(c=>c.name)} val={fCat} onChange={v=>{setFCat(v);setPage(1);}} w={170}/>
+        <FSel label="Category" opts={catNames} val={fCat} onChange={v=>{setFCat(v);setPage(1);}} w={170}/>
         <Btn ch="Clear" onClick={()=>{setFCat("all");setPage(1);}} sm/>
-        <div style={{marginLeft:"auto"}}>
-          <Btn ch="Manage Categories" variant="purple" onClick={()=>setShowCats(true)}/>
-        </div>
+        <div style={{marginLeft:"auto"}}><Btn ch="Manage Categories" variant="purple" onClick={()=>setShowCats(true)}/></div>
       </div>
       <div style={{marginBottom:10}}><SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/></div>
       <Card p={0}>
@@ -1167,90 +1555,162 @@ const ConsumablesPage=({nav})=>{
             <th style={{width:100,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
+            {loading?<tr><td colSpan={7} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
-                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.name}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted ${r.name}`)}/></>}/>
-                <Td ch={<strong>{r.name}</strong>}/><Td ch={r.category}/>
-                <Td ch={r.rate||"—"}/><Td ch={r.rateType||"—"}/><Td ch={r.currency||"—"}/>
-                <Td ch={<Btn ch="Deactivate" variant="gray" sm onClick={()=>doToast(`${r.name} deactivated`)}/>}/>
+                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.name}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
+                <Td ch={<strong>{r.name}</strong>}/>
+                <Td ch={r.consumable_categories?.name||"—"}/>
+                <Td ch={r.rate||"—"}/><Td ch={r.rate_type||"—"}/><Td ch={r.currency||"—"}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant="gray" sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
         <button onClick={()=>doToast("Add consumable")}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
       <div style={{marginTop:10}}><Btn ch="Import Consumables" sm icon={Ic.ul}/></div>
-      <Modal open={showCats} onClose={()=>setShowCats(false)} title="Manage Categories" w={520}>
+      <Modal open={showCats} onClose={()=>setShowCats(false)} title="Manage Categories" w={500}>
         <Card p={0} mb={12}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>
-              <Th ch="Category"/>
-              <th style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,width:110}}/>
-            </tr></thead>
+            <thead><tr><Th ch="Category"/><th style={{background:"#f8fafc",borderBottom:`1px solid ${C.border}`,width:110}}/></tr></thead>
             <tbody>
               {cats.map(cat=>(
                 <tr key={cat.id}>
                   <Td ch={<span style={{fontWeight:600}}>{cat.name}</span>}/>
-                  <Td ch={<Btn ch="Activate" sm onClick={()=>doToast(`${cat.name} activated`)}/>}/>
+                  <Td ch={<Btn ch={cat.status==="Active"?"Deactivate":"Activate"} sm onClick={()=>doToast(`${cat.name} güncellendi`)}/>}/>
                 </tr>))}
             </tbody>
           </table>
         </Card>
         <button onClick={()=>doToast("Add category")}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>⊕ Add</button>
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>⊕ Add</button>
       </Modal>
     </div>);
 };
 
-// ── EMPLOYEES ─────────────────────────────────────────────────────────────────
+// ── EMPLOYEE MODAL ────────────────────────────────────────────────────────────
+const EmployeeModal=({open,onClose,onSaved,initialData})=>{
+  const [empId,setEmpId]=useState("");
+  const [firstName,setFirstName]=useState("");
+  const [lastName,setLastName]=useState("");
+  const [empType,setEmpType]=useState("Field");
+  const [payroll,setPayroll]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){
+      setEmpId(initialData?.employee_id||"");setFirstName(initialData?.first_name||"");
+      setLastName(initialData?.last_name||"");setEmpType(initialData?.employee_type||"Field");
+      setPayroll(initialData?.payroll_category||"");setError("");
+    }
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!firstName.trim()){setError("First name zorunlu!");return;}
+    setSaving(true);
+    const payload={first_name:firstName.trim(),last_name:lastName||null,employee_type:empType,payroll_category:payroll||null,status:'Active'};
+    if(empId)payload.employee_id=parseInt(empId)||null;
+    const r=initialData?.id?await supabase.from('employees').update(payload).eq('id',initialData.id):await supabase.from('employees').insert(payload);
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:480,boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Employee":"Add Employee"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{marginBottom:14}}><label style={l}>Employee ID</label><input type="number" value={empId} onChange={e=>setEmpId(e.target.value)} style={s} placeholder="e.g. 302"/></div>
+        <div style={{marginBottom:14}}><label style={l}>First Name *</label><input value={firstName} onChange={e=>setFirstName(e.target.value)} style={s} placeholder="e.g. GHULAM"/></div>
+        <div style={{marginBottom:14}}><label style={l}>Last Name</label><input value={lastName} onChange={e=>setLastName(e.target.value)} style={s} placeholder="e.g. ABBAS BIRHAMANI"/></div>
+        <div style={{marginBottom:14}}><label style={l}>Employee Type</label>
+          <select value={empType} onChange={e=>setEmpType(e.target.value)} style={{...s,appearance:"none"}}>
+            <option>Field</option><option>Office</option>
+          </select></div>
+        <div style={{marginBottom:20}}><label style={l}>Payroll Category</label><input value={payroll} onChange={e=>setPayroll(e.target.value)} style={s} placeholder="Optional"/></div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
+// ── EMPLOYEES (Supabase) ──────────────────────────────────────────────────────
 const EmployeesPage=({nav})=>{
+  const [employees,setEmployees]=useState([]);
+  const [loading,setLoading]=useState(true);
   const [q,setQ]=useState(""),[fType,setFType]=useState("all");
   const [page,setPage]=useState(1),[toast,setToast]=useState("");
-  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2200);};
-  const filtered=useMemo(()=>filt(EMPLOYEES_DATA,{type:fType},["first","last","empId"],q),[q,fType]);
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+  const fetchEmployees=useCallback(async()=>{
+    setLoading(true);
+    const {data}=await supabase.from('employees').select('*').order('first_name');
+    setEmployees(data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{fetchEmployees();},[fetchEmployees]);
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.first_name}" silinsin mi?`))return;
+    const {error}=await supabase.from('employees').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchEmployees();}
+  };
+  const handleToggle=async(r)=>{
+    const s=r.status==="Active"?"InActive":"Active";
+    await supabase.from('employees').update({status:s}).eq('id',r.id);
+    doToast(`✓ ${r.first_name} → ${s}`);fetchEmployees();
+  };
+  const filtered=useMemo(()=>employees.filter(r=>{
+    const okT=fType==="all"||r.employee_type===fType;
+    const okQ=!q||r.first_name?.toLowerCase().includes(q.toLowerCase())||r.last_name?.toLowerCase().includes(q.toLowerCase())||String(r.employee_id||"").includes(q);
+    return okT&&okQ;
+  }),[employees,fType,q]);
   const {items,total}=pg(filtered,page,10);
   return(
     <div>
       <Toast msg={toast}/>
+      <EmployeeModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchEmployees();doToast("✓ Kaydedildi");}} initialData={editData}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Employees"}]} nav={nav}/>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
         <FSel label="Type" opts={["Field","Office"]} val={fType} onChange={v=>{setFType(v);setPage(1);}} w={140}/>
         <Btn ch="Clear" onClick={()=>{setFType("all");setPage(1);}} sm/>
-        <div style={{marginLeft:"auto"}}>
-          <Btn ch="Manage Payroll Categories" variant="purple" onClick={()=>doToast("Payroll categories opened")}/>
-        </div>
+        <div style={{marginLeft:"auto"}}><Btn ch="Manage Payroll Categories" variant="purple" onClick={()=>doToast("Yakında")}/></div>
       </div>
       <div style={{marginBottom:10}}><SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/></div>
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
             <Th ch="" w={70}/><Th ch="ID"/><Th ch="Name"/><Th ch="Type"/><Th ch="Payroll Category"/>
-            <th style={{width:100,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
+            <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
+            {loading?<tr><td colSpan={6} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
-                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing ${r.first}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted ${r.first}`)}/></>}/>
-                <Td ch={r.empId}/>
-                <Td ch={<strong>{r.first} {r.last!=="-"?r.last:""}</strong>}/>
-                <Td ch={<span style={{fontSize:11,background:r.type==="Field"?"#eff6ff":"#f0fdf4",
-                  color:r.type==="Field"?C.blue:C.green,padding:"2px 8px",borderRadius:10,fontWeight:600}}>
-                  {r.type}</span>}/>
-                <Td ch={r.payroll||"—"}/>
-                <Td ch={<Btn ch="Deactivate" variant="gray" sm onClick={()=>doToast(`${r.first} deactivated`)}/>}/>
+                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
+                <Td ch={r.employee_id||"—"}/>
+                <Td ch={<strong>{r.first_name} {r.last_name||""}</strong>}/>
+                <Td ch={<span style={{fontSize:11,background:r.employee_type==="Field"?"#eff6ff":"#f0fdf4",
+                  color:r.employee_type==="Field"?C.blue:C.green,padding:"2px 8px",borderRadius:10,fontWeight:600}}>
+                  {r.employee_type}</span>}/>
+                <Td ch={r.payroll_category||"—"}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
-        <button onClick={()=>doToast("Add employee")}
-          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
-            color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>
       </div>
     </div>);
@@ -1361,6 +1821,226 @@ const ReportSetupPage=({nav})=>{
     </div>);
 };
 
+// ── CLIENTS PAGE (Supabase) ───────────────────────────────────────────────────
+const ClientModal=({open,onClose,onSaved,initialData})=>{
+  const [name,setName]=useState("");
+  const [status,setStatus]=useState("Active");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){setName(initialData?.name||"");setStatus(initialData?.status||"Active");setError("");}
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!name.trim()){setError("Client name zorunlu!");return;}
+    setSaving(true);
+    const payload={name:name.trim(),status};
+    const r=initialData?.id?await supabase.from('clients').update(payload).eq('id',initialData.id):await supabase.from('clients').insert(payload);
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:440,boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Client":"Add Client"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{marginBottom:14}}><label style={l}>Client Name *</label><input value={name} onChange={e=>setName(e.target.value)} style={s} placeholder="e.g. Maaden BMNM"/></div>
+        <div style={{marginBottom:20}}><label style={l}>Status</label>
+          <select value={status} onChange={e=>setStatus(e.target.value)} style={{...s,appearance:"none"}}><option>Active</option><option>InActive</option></select></div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
+const ClientsPage=({nav})=>{
+  const [clients,setClients]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState(""),[page,setPage]=useState(1),[toast,setToast]=useState("");
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+  const fetchClients=useCallback(async()=>{
+    setLoading(true);
+    const {data}=await supabase.from('clients').select('*').order('name');
+    setClients(data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{fetchClients();},[fetchClients]);
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.name}" silinsin mi? Bu client'a bağlı tüm veriler etkilenebilir.`))return;
+    const {error}=await supabase.from('clients').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchClients();}
+  };
+  const handleToggle=async(r)=>{
+    const s=r.status==="Active"?"InActive":"Active";
+    await supabase.from('clients').update({status:s}).eq('id',r.id);
+    doToast(`✓ ${r.name} → ${s}`);fetchClients();
+  };
+  const filtered=useMemo(()=>clients.filter(r=>!q||r.name?.toLowerCase().includes(q.toLowerCase())),[clients,q]);
+  const {items,total}=pg(filtered,page,10);
+  return(
+    <div>
+      <Toast msg={toast}/>
+      <ClientModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchClients();doToast("✓ Kaydedildi");}} initialData={editData}/>
+      <Crumb items={[{label:"Home",page:"home"},{label:"Clients"}]} nav={nav}/>
+      <div style={{marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
+        <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/>
+        <span style={{fontSize:12,color:C.textMut}}>{loading?"Loading...":total+" entries"}</span>
+      </div>
+      <Card p={0}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>
+            <Th ch="" w={70}/><Th ch="Client Name"/><Th ch="Status"/>
+            <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
+          </tr></thead>
+          <tbody>
+            {loading?<tr><td colSpan={4} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
+              <tr key={r.id}>
+                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
+                <Td ch={<strong>{r.name}</strong>}/>
+                <Td ch={<Badge s={r.status} sm/>}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
+              </tr>))}
+          </tbody>
+        </table>
+      </Card>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+        <Pager page={page} setPage={setPage} per={10} total={total}/>
+      </div>
+    </div>);
+};
+
+// ── CONTRACTS PAGE (Supabase) ─────────────────────────────────────────────────
+const ContractModal=({open,onClose,onSaved,initialData,clients})=>{
+  const [name,setName]=useState("");
+  const [clientId,setClientId]=useState("");
+  const [status,setStatus]=useState("Active");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){setName(initialData?.name||"");setClientId(initialData?.client_id||"");setStatus(initialData?.status||"Active");setError("");}
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!name.trim()){setError("Contract name zorunlu!");return;}
+    if(!clientId){setError("Client seçilmeli!");return;}
+    setSaving(true);
+    const payload={name:name.trim(),client_id:clientId,status};
+    const r=initialData?.id?await supabase.from('contracts').update(payload).eq('id',initialData.id):await supabase.from('contracts').insert(payload);
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:480,boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Contract":"Add Contract"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{marginBottom:14}}><label style={l}>Contract Name *</label><input value={name} onChange={e=>setName(e.target.value)} style={s} placeholder="e.g. BM-NM Drilling Program 2024-2026 DD"/></div>
+        <div style={{marginBottom:14}}><label style={l}>Client *</label>
+          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...s,appearance:"none"}}>
+            <option value="">Select client...</option>
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div style={{marginBottom:20}}><label style={l}>Status</label>
+          <select value={status} onChange={e=>setStatus(e.target.value)} style={{...s,appearance:"none"}}><option>Active</option><option>InActive</option></select></div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
+const ContractsPage=({nav})=>{
+  const [contracts,setContracts]=useState([]);
+  const [clients,setClients]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState(""),[fClient,setFClient]=useState("all");
+  const [page,setPage]=useState(1),[toast,setToast]=useState("");
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+  const fetchAll=useCallback(async()=>{
+    setLoading(true);
+    const [co,cl]=await Promise.all([
+      supabase.from('contracts').select('*, clients(name)').order('name'),
+      supabase.from('clients').select('id,name').order('name'),
+    ]);
+    setContracts(co.data||[]);setClients(cl.data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{fetchAll();},[fetchAll]);
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`"${r.name}" silinsin mi?`))return;
+    const {error}=await supabase.from('contracts').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchAll();}
+  };
+  const handleToggle=async(r)=>{
+    const s=r.status==="Active"?"InActive":"Active";
+    await supabase.from('contracts').update({status:s}).eq('id',r.id);
+    doToast(`✓ ${r.name} → ${s}`);fetchAll();
+  };
+  const clientNames=useMemo(()=>clients.map(c=>c.name),[clients]);
+  const filtered=useMemo(()=>contracts.filter(r=>{
+    const okC=fClient==="all"||(r.clients?.name===fClient);
+    const okQ=!q||r.name?.toLowerCase().includes(q.toLowerCase());
+    return okC&&okQ;
+  }),[contracts,fClient,q]);
+  const {items,total}=pg(filtered,page,10);
+  return(
+    <div>
+      <Toast msg={toast}/>
+      <ContractModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={()=>{fetchAll();doToast("✓ Kaydedildi");}} initialData={editData} clients={clients}/>
+      <Crumb items={[{label:"Home",page:"home"},{label:"Contracts"}]} nav={nav}/>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
+        <FSel label="Client" opts={clientNames} val={fClient} onChange={v=>{setFClient(v);setPage(1);}} w={160}/>
+        <Btn ch="Clear" onClick={()=>{setFClient("all");setPage(1);}} sm/>
+      </div>
+      <div style={{marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
+        <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/>
+        <span style={{fontSize:12,color:C.textMut}}>{loading?"Loading...":total+" entries"}</span>
+      </div>
+      <Card p={0}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>
+            <Th ch="" w={70}/><Th ch="Contract Name"/><Th ch="Client"/><Th ch="Status"/>
+            <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
+          </tr></thead>
+          <tbody>
+            {loading?<tr><td colSpan={5} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
+              <tr key={r.id}>
+                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/></>}/>
+                <Td ch={<strong>{r.name}</strong>}/>
+                <Td ch={r.clients?.name||"—"}/>
+                <Td ch={<Badge s={r.status} sm/>}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"} variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
+              </tr>))}
+          </tbody>
+        </table>
+      </Card>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
+          style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
+        <Pager page={page} setPage={setPage} per={10} total={total}/>
+      </div>
+    </div>);
+};
+
 // ── SIDEBAR ───────────────────────────────────────────────────────────────────
 const Sidebar=({page,nav})=>{
   const [mgmtOpen,setMgmtOpen]=useState(true);
@@ -1422,6 +2102,8 @@ const Sidebar=({page,nav})=>{
         <NavItem label="Timesheet" p="timesheet"/>
         <GroupHeader label="Management" open={mgmtOpen} setOpen={setMgmtOpen}/>
         {mgmtOpen&&<>
+          <NavItem label="Clients" p="clients" indent/>
+          <NavItem label="Contracts" p="contracts" indent/>
           <NavItem label="Projects" p="projects" indent/>
           <NavItem label="Holes" p="holes" indent/>
           <NavItem label="Bits" p="bits" indent/>
@@ -1459,7 +2141,8 @@ const Sidebar=({page,nav})=>{
 // ── TOPBAR ────────────────────────────────────────────────────────────────────
 const PAGE_TITLES={
   "home":"Home","dsr":"Daily Shift Report","dsr-summary":"Daily Report Summary",
-  "shift-detail":"Shift Detail","timesheet":"Timesheet","projects":"Projects",
+  "shift-detail":"Shift Detail","timesheet":"Timesheet",
+  "clients":"Clients","contracts":"Contracts","projects":"Projects",
   "holes":"Holes","hole-detail":"Hole Detail","bits":"Bits","drills":"Drilling Rigs",
   "consumables":"Consumables","employees":"Employees","equipment":"Equipment","report-setup":"Report Setup",
 };
@@ -1491,6 +2174,8 @@ export default function App(){
       case "dsr-summary":  return <DSRSummaryPage nav={nav} params={params}/>;
       case "shift-detail": return <ShiftDetailPage nav={nav} params={params}/>;
       case "timesheet":    return <TimesheetPage nav={nav}/>;
+      case "clients":      return <ClientsPage nav={nav}/>;
+      case "contracts":    return <ContractsPage nav={nav}/>;
       case "projects":     return <ProjectsPage nav={nav}/>;
       case "holes":        return <HolesPage nav={nav}/>;
       case "hole-detail":  return <HoleDetailPage nav={nav} params={params}/>;

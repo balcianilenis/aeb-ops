@@ -2082,49 +2082,175 @@ const EmployeesPage=({nav})=>{
 };
 
 
-// ── EQUIPMENT ─────────────────────────────────────────────────────────────────
+// ── EQUIPMENT UNIT MODAL ─────────────────────────────────────────────────────
+const EquipmentUnitModal=({open,onClose,onSaved,initialData})=>{
+  const [equip,setEquip]=useState("");
+  const [unitNum,setUnitNum]=useState("");
+  const [equipType,setEquipType]=useState("");
+  const [year,setYear]=useState("");
+  const [make,setMake]=useState("");
+  const [model,setModel]=useState("");
+  const [vin,setVin]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(open){
+      setEquip(initialData?.equip||"");setUnitNum(initialData?.unit_number||"");
+      setEquipType(initialData?.equipment_type_name||"");setYear(initialData?.year||"");
+      setMake(initialData?.make||"");setModel(initialData?.model||"");
+      setVin(initialData?.vin||"");setError("");
+    }
+  },[open,initialData]);
+  const handleSave=async()=>{
+    if(!equip.trim()){setError("Equipment adı zorunlu!");return;}
+    setSaving(true);
+    const payload={
+      equip:equip.trim(),unit_number:parseInt(unitNum)||1,
+      equipment_type_name:equipType||null,year:parseInt(year)||null,
+      make:make||null,model:model||null,vin:vin||null,status:'Active'
+    };
+    const r=initialData?.id
+      ?await supabase.from('equipment_units').update(payload).eq('id',initialData.id)
+      :await supabase.from('equipment_units').insert(payload);
+    setSaving(false);
+    if(r.error){setError(r.error.message);return;}
+    onSaved();onClose();
+  };
+  if(!open)return null;
+  const s={width:"100%",padding:"9px 12px",fontSize:13,border:"1px solid #e2e8f0",borderRadius:7,boxSizing:"border-box",outline:"none"};
+  const l={display:"block",fontSize:11,fontWeight:700,color:"#334155",marginBottom:5,textTransform:"uppercase",letterSpacing:.5};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:999,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:12,padding:28,width:500,boxShadow:"0 24px 48px rgba(15,23,42,.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <strong style={{fontSize:16,fontWeight:700}}>{initialData?.id?"Edit Equipment Unit":"Add Equipment Unit"}</strong>
+          <button onClick={onClose} style={{background:"#f1f5f9",border:"none",cursor:"pointer",width:28,height:28,borderRadius:6,fontSize:16,color:"#64748b"}}>×</button>
+        </div>
+        {error&&<div style={{background:"#fff1f2",color:"#be123c",padding:"8px 12px",borderRadius:6,fontSize:12,marginBottom:14}}>{error}</div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div><label style={l}>Equipment Name *</label>
+            <select value={equip} onChange={e=>setEquip(e.target.value)} style={{...s,appearance:"none"}}>
+              <option value="">Select type...</option>
+              {EQUIP_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+            </select></div>
+          <div><label style={l}>Unit Number</label>
+            <input type="number" value={unitNum} onChange={e=>setUnitNum(e.target.value)} style={s} placeholder="e.g. 1"/></div>
+          <div><label style={l}>Equipment Type</label>
+            <input value={equipType} onChange={e=>setEquipType(e.target.value)} style={s} placeholder="e.g. Transportation"/></div>
+          <div><label style={l}>Year</label>
+            <input type="number" value={year} onChange={e=>setYear(e.target.value)} style={s} placeholder="e.g. 2022"/></div>
+          <div><label style={l}>Make</label>
+            <input value={make} onChange={e=>setMake(e.target.value)} style={s} placeholder="e.g. MITSUBISHI"/></div>
+          <div><label style={l}>Model</label>
+            <input value={model} onChange={e=>setModel(e.target.value)} style={s} placeholder="e.g. L200Pickup"/></div>
+          <div style={{gridColumn:"span 2"}}><label style={l}>VIN / Serial Number</label>
+            <input value={vin} onChange={e=>setVin(e.target.value)} style={s} placeholder="e.g. 4906 XXB"/></div>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:20}}>
+          <button onClick={onClose} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#f1f5f9",color:"#334155",border:"1px solid #e2e8f0",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#2563eb",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",opacity:saving?.6:1}}>{saving?"Saving...":"Save"}</button>
+        </div>
+      </div>
+    </div>);
+};
+
+// ── EQUIPMENT (Supabase) ──────────────────────────────────────────────────────
 const EquipmentPage=({nav})=>{
-  const [selType,setSelType]=useState(""),[page,setPage]=useState(1),[toast,setToast]=useState("");
-  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2200);};
-  const {items,total}=pg(EQUIP_UNITS,page,10);
+  const [units,setUnits]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [selType,setSelType]=useState("");
+  const [page,setPage]=useState(1),[toast,setToast]=useState("");
+  const [modalOpen,setModalOpen]=useState(false),[editData,setEditData]=useState(null);
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
+
+  const fetchUnits=useCallback(async()=>{
+    setLoading(true);
+    const {data}=await supabase.from('equipment_units').select('*').order('equip');
+    setUnits(data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{fetchUnits();},[fetchUnits]);
+
+  const handleDelete=async(r)=>{
+    if(!window.confirm(`Unit ${r.unit_number} silinsin mi?`))return;
+    const {error}=await supabase.from('equipment_units').delete().eq('id',r.id);
+    if(error)doToast("Hata: "+error.message);else{doToast("✓ Silindi");fetchUnits();}
+  };
+  const handleToggle=async(r)=>{
+    const s=r.status==="Active"?"InActive":"Active";
+    await supabase.from('equipment_units').update({status:s}).eq('id',r.id);
+    doToast(`✓ Unit ${r.unit_number} → ${s}`);fetchUnits();
+  };
+
+  // Type tileleri için unique equipment names
+  const equipNames=useMemo(()=>[...new Set(units.map(u=>u.equip).filter(Boolean))],[units]);
+  const filtered=useMemo(()=>selType?units.filter(u=>u.equip===selType):units,[units,selType]);
+  const {items,total}=pg(filtered,page,10);
+
   return(
     <div>
       <Toast msg={toast}/>
+      <EquipmentUnitModal open={modalOpen} onClose={()=>setModalOpen(false)}
+        onSaved={()=>{fetchUnits();doToast("✓ Kaydedildi");}} initialData={editData}/>
       <Crumb items={[{label:"Home",page:"home"},{label:"Equipment"}]} nav={nav}/>
+
+      {/* Equipment type tiles */}
       <Card mb={16}>
-        <SH title="Equipment Types"/>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>
-          {EQUIP_TYPES.map(t=>(
-            <div key={t} onClick={()=>setSelType(selType===t?"":t)}
-              style={{padding:"10px 16px",border:`1.5px solid ${selType===t?C.blue:C.border}`,
-                borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,
-                background:selType===t?"#eff6ff":C.white,color:selType===t?C.blue:C.textSec,
-                transition:"all .15s",boxShadow:C.shadow}}>
-              {t}
-            </div>))}
+        <SH title="Equipment Types" action={
+          <span style={{fontSize:12,color:C.textMut}}>
+            {selType&&<button onClick={()=>setSelType("")}
+              style={{background:"none",border:"none",cursor:"pointer",color:C.blue,fontSize:12,fontWeight:600}}>
+              Tümünü göster ×
+            </button>}
+          </span>}/>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          {EQUIP_TYPES.map(t=>{
+            const count=units.filter(u=>u.equip===t).length;
+            return(
+              <div key={t} onClick={()=>setSelType(selType===t?"":t)}
+                style={{padding:"10px 16px",border:`1.5px solid ${selType===t?C.blue:C.border}`,
+                  borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,
+                  background:selType===t?"#eff6ff":C.white,color:selType===t?C.blue:C.textSec,
+                  transition:"all .15s",boxShadow:C.shadow,display:"flex",alignItems:"center",gap:8}}>
+                {t}
+                {count>0&&<span style={{fontSize:11,background:selType===t?"#dbeafe":"#f1f5f9",
+                  color:selType===t?C.blue:C.textMut,padding:"1px 6px",borderRadius:10}}>
+                  {count}
+                </span>}
+              </div>);})}
         </div>
       </Card>
-      <div style={{fontWeight:700,fontSize:15,color:C.textPri,marginBottom:10}}>Equipment Units</div>
+
+      <div style={{fontWeight:700,fontSize:15,color:C.textPri,marginBottom:10}}>
+        Equipment Units {selType&&<span style={{color:C.textMut,fontWeight:400,fontSize:13}}>— {selType}</span>}
+      </div>
       <Card p={0}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead><tr>
             <Th ch="" w={70}/><Th ch="Equipment"/><Th ch="Unit #"/><Th ch="Type"/>
-            <Th ch="Year"/><Th ch="Make"/><Th ch="Model"/><Th ch="VIN"/>
-            <th style={{width:100,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
+            <Th ch="Year"/><Th ch="Make"/><Th ch="Model"/><Th ch="VIN"/><Th ch="Status"/>
+            <th style={{width:110,background:"#f8fafc",borderBottom:`1px solid ${C.border}`}}/>
           </tr></thead>
           <tbody>
-            {items.length===0?<NoRows/>:items.map(r=>(
+            {loading?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.textMut}}>Loading...</td></tr>
+            :items.length===0?<NoRows/>:items.map(r=>(
               <tr key={r.id}>
-                <Td ch={<><IBtn icon={Ic.edit} color={C.teal} onClick={()=>doToast(`Editing unit ${r.unit}`)}/><IBtn icon={Ic.trash} color={C.red} onClick={()=>doToast(`Deleted unit ${r.unit}`)}/></>}/>
-                <Td ch={<strong>{r.equip}</strong>}/><Td ch={r.unit}/><Td ch={r.type}/>
-                <Td ch={r.year}/><Td ch={r.make}/><Td ch={r.model}/><Td ch={r.vin}/>
-                <Td ch={<Btn ch="Deactivate" variant="gray" sm onClick={()=>doToast(`Unit ${r.unit} deactivated`)}/>}/>
+                <Td ch={<>
+                  <IBtn icon={Ic.edit} color={C.teal} onClick={()=>{setEditData(r);setModalOpen(true);}}/>
+                  <IBtn icon={Ic.trash} color={C.red} onClick={()=>handleDelete(r)}/>
+                </>}/>
+                <Td ch={<strong>{r.equip}</strong>}/>
+                <Td ch={r.unit_number}/>
+                <Td ch={r.equipment_type_name||"—"}/>
+                <Td ch={r.year||"—"}/><Td ch={r.make||"—"}/><Td ch={r.model||"—"}/><Td ch={r.vin||"—"}/>
+                <Td ch={<Badge s={r.status} sm/>}/>
+                <Td ch={<Btn ch={r.status==="Active"?"Deactivate":"Activate"}
+                  variant={r.status==="Active"?"gray":"teal"} sm onClick={()=>handleToggle(r)}/>}/>
               </tr>))}
           </tbody>
         </table>
       </Card>
       <div style={{display:"flex",justifyContent:"space-between"}}>
-        <button onClick={()=>doToast("Add equipment unit")}
+        <button onClick={()=>{setEditData(null);setModalOpen(true);}}
           style={{padding:"7px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",
             color:C.blue,fontWeight:600,display:"flex",alignItems:"center",gap:4,marginTop:8}}>⊕ Add</button>
         <Pager page={page} setPage={setPage} per={10} total={total}/>

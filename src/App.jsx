@@ -521,6 +521,9 @@ const DSRCreatePage=({nav})=>{
       .select('shift').eq('report_date',date).eq('drill_id',drillId)
       .then(({data})=>setUsedShifts((data||[]).map(r=>r.shift)));
   },[date,drillId]);
+
+  // Rows
+  const [workers,setWorkers]=useState([{_k:1,empId:'',empName:'',role:'',start:'06:30',end:'18:30'}]);
   const [activities,setActivities]=useState([{_k:1,cat:'',act:'',start:'06:30',end:'07:00'}]);
   const [drillRecs,setDrillRecs]=useState([{_k:1,holeId:'',holeName:'',from:'',to:''}]);
 

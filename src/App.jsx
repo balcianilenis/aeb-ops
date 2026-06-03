@@ -621,8 +621,16 @@ const DSRCreatePage=({nav,params})=>{
   const updateDrillRec=(k,f,v)=>setDrillRecs(p=>p.map(r=>r._k===k?{...r,[f]:v}:r));
   const removeDrillRec=k=>setDrillRecs(p=>p.filter(r=>r._k!==k));
 
-  // Totals
-  const totalManHrs=useMemo(()=>workers.reduce((s,r)=>s+calcHours(r.start,r.end),0),[workers]);
+  // Kuyu seçilince son derinliği çek
+  const [holeLastDepths,setHoleLastDepths]=useState({}); // holeId → lastDepth
+  const fetchLastDepth=useCallback(async(hId,rowKey)=>{
+    const{data}=await supabase.from('dsr_drilling_records')
+      .select('depth_to').eq('hole_id',hId).order('depth_to',{ascending:false}).limit(1);
+    const lastDepth=data?.[0]?.depth_to??0;
+    setHoleLastDepths(p=>({...p,[hId]:lastDepth}));
+    // depth_from'u otomatik doldur
+    updateDrillRec(rowKey,'from',String(lastDepth));
+  },[]);
   const totalActHrs=useMemo(()=>activities.reduce((s,r)=>s+calcHours(r.start,r.end),0),[activities]);
   const totalDist=useMemo(()=>drillRecs.reduce((s,r)=>{
     const d=(parseFloat(r.to)||0)-(parseFloat(r.from)||0);
@@ -908,23 +916,38 @@ const DSRCreatePage=({nav,params})=>{
               <tbody>
                 {drillRecs.map(row=>{
                   const dist=Math.max(0,(parseFloat(row.to)||0)-(parseFloat(row.from)||0));
+                  const lastDepth=row.holeId!==''?holeLastDepths[row.holeId]:undefined;
+                  const fromLocked=row.holeId!==''&&lastDepth!==undefined;
                   return(
                     <tr key={row._k} style={{borderBottom:`1px solid #f1f5f9`}}>
                       <td style={{padding:'5px 6px',minWidth:150}}>
                         <select value={row.holeId} onChange={e=>{
                           const h=holes.find(h=>h.id===e.target.value);
                           updateDrillRec(row._k,'holeId',e.target.value);
-                          if(h)updateDrillRec(row._k,'holeName',h.name);
+                          if(h){
+                            updateDrillRec(row._k,'holeName',h.name);
+                            fetchLastDepth(e.target.value,row._k);
+                          }
                         }} style={{...sel,fontSize:11}}>
                           <option value="">Kuyu seç...</option>
                           {holes.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
                         </select>
                       </td>
                       <td style={{padding:'5px 6px'}}>
-                        <input type="number" value={row.from} onChange={e=>updateDrillRec(row._k,'from',e.target.value)} style={{...inp,width:100,fontSize:11}} placeholder="0"/>
+                        <input type="number" value={row.from}
+                          readOnly={fromLocked}
+                          style={{...inp,width:100,fontSize:11,
+                            background:fromLocked?'#f0fdf4':'#fff',
+                            color:fromLocked?C.green:'#0f172a',
+                            fontWeight:fromLocked?700:400}}
+                          onChange={e=>!fromLocked&&updateDrillRec(row._k,'from',e.target.value)}
+                          placeholder="0"/>
+                        {fromLocked&&<div style={{fontSize:9,color:C.green,marginTop:2,fontWeight:600}}>✓ Son kayıt: {lastDepth}m</div>}
                       </td>
                       <td style={{padding:'5px 6px'}}>
-                        <input type="number" value={row.to} onChange={e=>updateDrillRec(row._k,'to',e.target.value)} style={{...inp,width:100,fontSize:11}} placeholder="0"/>
+                        <input type="number" value={row.to}
+                          onChange={e=>updateDrillRec(row._k,'to',e.target.value)}
+                          style={{...inp,width:100,fontSize:11}} placeholder="0"/>
                       </td>
                       <td style={{padding:'5px 8px'}}>
                         <span style={{fontWeight:700,color:dist>0?C.green:C.textMut,fontSize:14}}>

@@ -513,8 +513,14 @@ const DSRCreatePage=({nav})=>{
   const [holeId,setHoleId]=useState('');
   const [holeInfo,setHoleInfo]=useState(null); // auto-filled from hole selection
 
-  // Rows
-  const [workers,setWorkers]=useState([{_k:1,empId:'',empName:'',role:'',start:'06:30',end:'18:30'}]);
+  // Seçili tarih + rig için hangi vardiyalar dolu?
+  const [usedShifts,setUsedShifts]=useState([]);
+  useEffect(()=>{
+    if(!date||!drillId){setUsedShifts([]);return;}
+    supabase.from('daily_shift_reports')
+      .select('shift').eq('report_date',date).eq('drill_id',drillId)
+      .then(({data})=>setUsedShifts((data||[]).map(r=>r.shift)));
+  },[date,drillId]);
   const [activities,setActivities]=useState([{_k:1,cat:'',act:'',start:'06:30',end:'07:00'}]);
   const [drillRecs,setDrillRecs]=useState([{_k:1,holeId:'',holeName:'',from:'',to:''}]);
 
@@ -581,15 +587,8 @@ const DSRCreatePage=({nav})=>{
 
   const handleSave=async()=>{
     if(!date||!shift||!drillId){doToast('Tarih, Vardiya ve Rig ID zorunlu!');return;}
+    if(usedShifts.includes(shift)){doToast('Bu vardiya zaten girilmiş!');return;}
     setSaving(true);
-    // Duplicate kontrol — aynı tarih+vardiya+rig zaten var mı?
-    const{data:existing}=await supabase.from('daily_shift_reports')
-      .select('id').eq('report_date',date).eq('shift',shift).eq('drill_id',drillId).single();
-    if(existing){
-      setSaving(false);
-      doToast(`❌ ${date} ${shift} vardiyası için bu rig zaten girilmiş!`);
-      return;
-    }
     const{data:dsr,error}=await supabase.from('daily_shift_reports').insert({
       report_date:date,shift,status:'PENDING APPROVAL',
       drill_id:drillId||null,
@@ -678,9 +677,18 @@ const DSRCreatePage=({nav})=>{
               <div>
                 <label style={lbl}>Vardiya *</label>
                 <select value={shift} onChange={e=>setShift(e.target.value)} style={sel}>
-                  <option value="DAY">☀️ DAY — Gündüz</option>
-                  <option value="NIGHT">🌙 NIGHT — Gece</option>
+                  {[
+                    {val:'DAY',label:'☀️ DAY — Gündüz'},
+                    {val:'NIGHT',label:'🌙 NIGHT — Gece'},
+                  ].map(o=>(
+                    <option key={o.val} value={o.val} disabled={usedShifts.includes(o.val)}>
+                      {o.label}{usedShifts.includes(o.val)?' ✗ Girilmiş':''}
+                    </option>))}
                 </select>
+                {usedShifts.includes(shift)&&(
+                  <div style={{fontSize:10,color:C.red,marginTop:3,fontWeight:600}}>
+                    Bu vardiya zaten girilmiş
+                  </div>)}
               </div>
               <div>
                 <label style={lbl}>Rig ID *</label>

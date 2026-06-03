@@ -631,6 +631,8 @@ const DSRCreatePage=({nav,params})=>{
     // depth_from'u otomatik doldur
     updateDrillRec(rowKey,'from',String(lastDepth));
   },[]);
+  // Totals
+  const totalManHrs=useMemo(()=>workers.reduce((s,r)=>s+calcHours(r.start,r.end),0),[workers]);
   const totalActHrs=useMemo(()=>activities.reduce((s,r)=>s+calcHours(r.start,r.end),0),[activities]);
   const totalDist=useMemo(()=>drillRecs.reduce((s,r)=>{
     const d=(parseFloat(r.to)||0)-(parseFloat(r.from)||0);

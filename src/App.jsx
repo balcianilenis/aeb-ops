@@ -492,6 +492,406 @@ const HomePage=({nav})=>{
     </div>);
 };
 
+// ── DSR CREATE PAGE ───────────────────────────────────────────────────────────
+const calcHours=(s,e)=>{
+  if(!s||!e)return 0;
+  const[sh,sm]=s.split(':').map(Number);
+  const[eh,em]=e.split(':').map(Number);
+  const d=(eh*60+em)-(sh*60+sm);
+  return d>0?Math.round(d/60*100)/100:0;
+};
+
+const DSRCreatePage=({nav})=>{
+  // Lookup data
+  const [drills,setDrills]=useState([]);
+  const [clients,setClients]=useState([]);
+  const [contracts,setContracts]=useState([]);
+  const [projects,setProjects]=useState([]);
+  const [employees,setEmployees]=useState([]);
+  const [holes,setHoles]=useState([]);
+
+  // Form state
+  const [date,setDate]=useState(new Date().toISOString().split('T')[0]);
+  const [shift,setShift]=useState('DAY');
+  const [drillId,setDrillId]=useState('');
+  const [clientId,setClientId]=useState('');
+  const [contractId,setContractId]=useState('');
+  const [projectId,setProjectId]=useState('');
+
+  // Workers rows
+  const [workers,setWorkers]=useState([{_k:1,empId:'',empName:'',role:'',start:'06:30',end:'18:30'}]);
+  // Activity rows
+  const [activities,setActivities]=useState([{_k:1,cat:'',act:'',start:'06:30',end:'07:00'}]);
+  // Drilling rows
+  const [drillRecs,setDrillRecs]=useState([{_k:1,holeId:'',holeName:'',from:'',to:'',rop:''}]);
+
+  // Accordion open state
+  const [open,setOpen]=useState({basic:true,workers:false,activities:false,drilling:false});
+  const toggleSection=s=>setOpen(p=>({...p,[s]:!p[s]}));
+
+  const [saving,setSaving]=useState(false);
+  const [toast,setToast]=useState('');
+  const doToast=msg=>{setToast(msg);setTimeout(()=>setToast(''),2500);};
+
+  useEffect(()=>{
+    Promise.all([
+      supabase.from('drills').select('id,name').eq('status','Active').order('name'),
+      supabase.from('clients').select('id,name').order('name'),
+      supabase.from('contracts').select('id,name').order('name'),
+      supabase.from('projects').select('id,name').order('name'),
+      supabase.from('employees').select('id,first_name,last_name,employee_type').eq('status','Active').order('first_name'),
+      supabase.from('holes').select('id,name').order('name'),
+    ]).then(([d,cl,co,pr,em,h])=>{
+      setDrills(d.data||[]);setClients(cl.data||[]);setContracts(co.data||[]);
+      setProjects(pr.data||[]);setEmployees(em.data||[]);setHoles(h.data||[]);
+    });
+  },[]);
+
+  // Worker helpers
+  const addWorker=()=>setWorkers(p=>[...p,{_k:Date.now(),empId:'',empName:'',role:'',start:'06:30',end:'18:30'}]);
+  const updateWorker=(k,f,v)=>setWorkers(p=>p.map(r=>r._k===k?{...r,[f]:v}:r));
+  const removeWorker=k=>setWorkers(p=>p.filter(r=>r._k!==k));
+
+  // Activity helpers
+  const addActivity=()=>setActivities(p=>[...p,{_k:Date.now(),cat:'',act:'',start:'',end:''}]);
+  const updateActivity=(k,f,v)=>setActivities(p=>p.map(r=>r._k===k?{...r,[f]:v}:r));
+  const removeActivity=k=>setActivities(p=>p.filter(r=>r._k!==k));
+
+  // Drilling helpers
+  const addDrillRec=()=>setDrillRecs(p=>[...p,{_k:Date.now(),holeId:'',holeName:'',from:'',to:'',rop:''}]);
+  const updateDrillRec=(k,f,v)=>setDrillRecs(p=>p.map(r=>r._k===k?{...r,[f]:v}:r));
+  const removeDrillRec=k=>setDrillRecs(p=>p.filter(r=>r._k!==k));
+
+  // Totals
+  const totalManHrs=useMemo(()=>workers.reduce((s,r)=>s+calcHours(r.start,r.end),0),[workers]);
+  const totalActHrs=useMemo(()=>activities.reduce((s,r)=>s+calcHours(r.start,r.end),0),[activities]);
+  const totalDist=useMemo(()=>drillRecs.reduce((s,r)=>{
+    const d=(parseFloat(r.to)||0)-(parseFloat(r.from)||0);
+    return s+(d>0?d:0);
+  },0),[drillRecs]);
+
+  const handleSave=async(status='PENDING APPROVAL')=>{
+    if(!date||!shift||!drillId){doToast('Tarih, Vardiya ve Matkap zorunlu!');return;}
+    setSaving(true);
+    // 1. DSR kaydet
+    const{data:dsr,error}=await supabase.from('daily_shift_reports').insert({
+      report_date:date,shift,status,
+      drill_id:drillId||null,client_id:clientId||null,
+      contract_id:contractId||null,project_id:projectId||null,
+      total_man_hours:totalManHrs,total_activity_hours:totalActHrs,
+      total_distance_drilled:totalDist,
+    }).select('id').single();
+    if(error){setSaving(false);doToast('Hata: '+error.message);return;}
+    const dsrId=dsr.id;
+    // 2. Workers
+    const wRows=workers.filter(r=>r.empName||r.empId).map(r=>({
+      dsr_id:dsrId,employee_id:r.empId||null,
+      employee_name:r.empName||employees.find(e=>e.id===r.empId)?.first_name||'',
+      role:r.role||null,start_time:r.start||null,end_time:r.end||null,
+      man_hours:calcHours(r.start,r.end),
+    }));
+    if(wRows.length)await supabase.from('dsr_workers').insert(wRows);
+    // 3. Activities
+    const aRows=activities.filter(r=>r.act||r.cat).map(r=>({
+      dsr_id:dsrId,category:r.cat||null,activity:r.act||null,
+      start_time:r.start||null,end_time:r.end||null,
+      duration_hours:calcHours(r.start,r.end),
+    }));
+    if(aRows.length)await supabase.from('dsr_activities').insert(aRows);
+    // 4. Drilling records
+    const dRows=drillRecs.filter(r=>r.from!==''||r.to!=='').map(r=>({
+      dsr_id:dsrId,hole_id:r.holeId||null,hole_name:r.holeName||null,
+      depth_from:parseFloat(r.from)||0,depth_to:parseFloat(r.to)||0,
+      rop:parseFloat(r.rop)||null,
+    }));
+    if(dRows.length)await supabase.from('dsr_drilling_records').insert(dRows);
+    setSaving(false);
+    doToast('✓ DSR kaydedildi!');
+    setTimeout(()=>nav('dsr'),1200);
+  };
+
+  // Styles
+  const inp={width:'100%',padding:'7px 10px',fontSize:12,border:'1px solid #e2e8f0',borderRadius:6,boxSizing:'border-box',outline:'none',background:'#fff',color:'#0f172a'};
+  const sel={...inp,appearance:'none'};
+  const lbl={display:'block',fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase',letterSpacing:.5};
+
+  const SectionHeader=({id,title,badge,icon,color})=>(
+    <div onClick={()=>toggleSection(id)}
+      style={{padding:'10px 14px',display:'flex',alignItems:'center',gap:8,cursor:'pointer',
+        background:open[id]?(color||'#f8fafc'):'#f8fafc',
+        borderBottom:open[id]?`1px solid ${C.border}`:'none'}}>
+      <div style={{width:22,height:22,borderRadius:'50%',
+        background:open[id]?(color==='#eff6ff'?C.blue:'#475569'):'#cbd5e1',
+        display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+        <span style={{fontSize:11,fontWeight:700,color:'#fff'}}>{icon}</span>
+      </div>
+      <span style={{flex:1,fontSize:13,fontWeight:600,color:C.textPri}}>{title}</span>
+      {badge&&<span style={{fontSize:11,background:C.blue,color:'#fff',padding:'1px 8px',borderRadius:10,fontWeight:600}}>{badge}</span>}
+      <span style={{color:C.textMut,fontSize:11}}>{open[id]?'▲':'▼'}</span>
+    </div>);
+
+  return(
+    <div style={{maxWidth:900,margin:'0 auto'}}>
+      <Toast msg={toast}/>
+      <Crumb items={[{label:'Home',page:'home'},{label:'Daily Shift Report',page:'dsr'},{label:'New DSR'}]} nav={nav}/>
+
+      {/* Top summary bar */}
+      <div style={{display:'flex',gap:12,marginBottom:14}}>
+        {[
+          {label:'Man Hours',val:`${totalManHrs.toFixed(1)} h`,color:C.blue},
+          {label:'Activity Hours',val:`${totalActHrs.toFixed(1)} h`,color:C.teal},
+          {label:'Distance Drilled',val:`${totalDist.toFixed(2)} m`,color:C.green},
+        ].map(s=>(
+          <div key={s.label} style={{flex:1,background:C.white,border:`1px solid ${C.border}`,
+            borderRadius:8,padding:'10px 14px',textAlign:'center',boxShadow:C.shadow}}>
+            <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:11,color:C.textMut,marginTop:2,fontWeight:500}}>{s.label}</div>
+          </div>))}
+      </div>
+
+      {/* SECTION 1: Basic Info */}
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,overflow:'hidden',boxShadow:C.shadow}}>
+        <SectionHeader id="basic" title="Temel Bilgi" icon="1" color="#eff6ff"/>
+        {open.basic&&(
+          <div style={{padding:16}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:12}}>
+              <div>
+                <label style={lbl}>Tarih *</label>
+                <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>Vardiya *</label>
+                <select value={shift} onChange={e=>setShift(e.target.value)} style={sel}>
+                  <option value="DAY">DAY — Gündüz</option>
+                  <option value="NIGHT">NIGHT — Gece</option>
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Matkap *</label>
+                <select value={drillId} onChange={e=>setDrillId(e.target.value)} style={sel}>
+                  <option value="">Seç...</option>
+                  {drills.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+              <div>
+                <label style={lbl}>Müşteri</label>
+                <select value={clientId} onChange={e=>setClientId(e.target.value)} style={sel}>
+                  <option value="">Seç...</option>
+                  {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Kontrat</label>
+                <select value={contractId} onChange={e=>setContractId(e.target.value)} style={sel}>
+                  <option value="">Seç...</option>
+                  {contracts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Proje</label>
+                <select value={projectId} onChange={e=>setProjectId(e.target.value)} style={sel}>
+                  <option value="">Seç...</option>
+                  {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>)}
+      </div>
+
+      {/* SECTION 2: Workers */}
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,overflow:'hidden',boxShadow:C.shadow}}>
+        <SectionHeader id="workers" title="Çalışanlar" icon="2"
+          badge={workers.filter(r=>r.empId||r.empName).length||null}/>
+        {open.workers&&(
+          <div style={{padding:16}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{borderBottom:`1px solid ${C.border}`}}>
+                  {['Çalışan','Rol','Başlangıç','Bitiş','Saat',''].map(h=>(
+                    <th key={h} style={{padding:'6px 8px',fontSize:10,fontWeight:700,color:C.textMut,
+                      textAlign:'left',textTransform:'uppercase',letterSpacing:.5}}>{h}</th>))}
+                </tr>
+              </thead>
+              <tbody>
+                {workers.map(row=>{
+                  const hrs=calcHours(row.start,row.end);
+                  return(
+                    <tr key={row._k} style={{borderBottom:`1px solid #f1f5f9`}}>
+                      <td style={{padding:'5px 6px',minWidth:160}}>
+                        <select value={row.empId} onChange={e=>{
+                          const emp=employees.find(em=>em.id===e.target.value);
+                          updateWorker(row._k,'empId',e.target.value);
+                          if(emp)updateWorker(row._k,'empName',`${emp.first_name} ${emp.last_name||''}`);
+                        }} style={{...sel,fontSize:11}}>
+                          <option value="">Seç...</option>
+                          {employees.map(e=><option key={e.id} value={e.id}>{e.first_name} {e.last_name||''}</option>)}
+                        </select>
+                      </td>
+                      <td style={{padding:'5px 6px',minWidth:120}}>
+                        <select value={row.role} onChange={e=>updateWorker(row._k,'role',e.target.value)} style={{...sel,fontSize:11}}>
+                          <option value="">Rol seç...</option>
+                          {['Driller','Offsider','Helper','Supervisor','Geologist','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </td>
+                      <td style={{padding:'5px 6px'}}>
+                        <input type="time" value={row.start} onChange={e=>updateWorker(row._k,'start',e.target.value)} style={{...inp,width:90,fontSize:11}}/>
+                      </td>
+                      <td style={{padding:'5px 6px'}}>
+                        <input type="time" value={row.end} onChange={e=>updateWorker(row._k,'end',e.target.value)} style={{...inp,width:90,fontSize:11}}/>
+                      </td>
+                      <td style={{padding:'5px 8px',textAlign:'center'}}>
+                        <span style={{fontWeight:700,color:hrs>0?C.blue:C.textMut,fontSize:13}}>{hrs>0?hrs:'-'}</span>
+                      </td>
+                      <td style={{padding:'5px 4px'}}>
+                        <button onClick={()=>removeWorker(row._k)}
+                          style={{background:'none',border:'none',cursor:'pointer',color:C.red,fontSize:16,lineHeight:1}}>×</button>
+                      </td>
+                    </tr>);})}
+              </tbody>
+            </table>
+            <button onClick={addWorker}
+              style={{marginTop:8,background:'none',border:'none',color:C.blue,fontSize:12,
+                cursor:'pointer',padding:'4px 0',display:'flex',alignItems:'center',gap:4,fontWeight:600}}>
+              + Çalışan Ekle
+            </button>
+          </div>)}
+      </div>
+
+      {/* SECTION 3: Activities */}
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,overflow:'hidden',boxShadow:C.shadow}}>
+        <SectionHeader id="activities" title="Aktiviteler" icon="3"
+          badge={activities.filter(r=>r.act||r.cat).length?`${totalActHrs.toFixed(1)}h`:null}/>
+        {open.activities&&(
+          <div style={{padding:16}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{borderBottom:`1px solid ${C.border}`}}>
+                  {['Kategori','Aktivite','Başlangıç','Bitiş','Süre',''].map(h=>(
+                    <th key={h} style={{padding:'6px 8px',fontSize:10,fontWeight:700,color:C.textMut,
+                      textAlign:'left',textTransform:'uppercase',letterSpacing:.5}}>{h}</th>))}
+                </tr>
+              </thead>
+              <tbody>
+                {activities.map(row=>{
+                  const hrs=calcHours(row.start,row.end);
+                  const actOpts=row.cat&&REPORT_SETUP[row.cat]?REPORT_SETUP[row.cat]:[];
+                  return(
+                    <tr key={row._k} style={{borderBottom:`1px solid #f1f5f9`}}>
+                      <td style={{padding:'5px 6px',minWidth:140}}>
+                        <select value={row.cat} onChange={e=>{
+                          updateActivity(row._k,'cat',e.target.value);
+                          updateActivity(row._k,'act','');
+                        }} style={{...sel,fontSize:11}}>
+                          <option value="">Kategori...</option>
+                          {Object.keys(REPORT_SETUP).map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </td>
+                      <td style={{padding:'5px 6px',minWidth:160}}>
+                        <select value={row.act} onChange={e=>updateActivity(row._k,'act',e.target.value)}
+                          style={{...sel,fontSize:11}} disabled={!row.cat}>
+                          <option value="">Aktivite...</option>
+                          {actOpts.map(a=><option key={a} value={a}>{a}</option>)}
+                        </select>
+                      </td>
+                      <td style={{padding:'5px 6px'}}>
+                        <input type="time" value={row.start} onChange={e=>updateActivity(row._k,'start',e.target.value)} style={{...inp,width:90,fontSize:11}}/>
+                      </td>
+                      <td style={{padding:'5px 6px'}}>
+                        <input type="time" value={row.end} onChange={e=>updateActivity(row._k,'end',e.target.value)} style={{...inp,width:90,fontSize:11}}/>
+                      </td>
+                      <td style={{padding:'5px 8px',textAlign:'center'}}>
+                        <span style={{fontWeight:700,color:hrs>0?C.teal:C.textMut,fontSize:13}}>{hrs>0?`${hrs}h`:'-'}</span>
+                      </td>
+                      <td style={{padding:'5px 4px'}}>
+                        <button onClick={()=>removeActivity(row._k)}
+                          style={{background:'none',border:'none',cursor:'pointer',color:C.red,fontSize:16,lineHeight:1}}>×</button>
+                      </td>
+                    </tr>);})}
+              </tbody>
+            </table>
+            <button onClick={addActivity}
+              style={{marginTop:8,background:'none',border:'none',color:C.blue,fontSize:12,
+                cursor:'pointer',padding:'4px 0',display:'flex',alignItems:'center',gap:4,fontWeight:600}}>
+              + Aktivite Ekle
+            </button>
+          </div>)}
+      </div>
+
+      {/* SECTION 4: Drilling Records */}
+      <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:16,overflow:'hidden',boxShadow:C.shadow}}>
+        <SectionHeader id="drilling" title="Sondaj Verisi" icon="4"
+          badge={totalDist>0?`${totalDist.toFixed(1)}m`:null}/>
+        {open.drilling&&(
+          <div style={{padding:16}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{borderBottom:`1px solid ${C.border}`}}>
+                  {['Kuyu','Derinlik (m)','Kadar (m)','Mesafe','ROP (m/hr)',''].map(h=>(
+                    <th key={h} style={{padding:'6px 8px',fontSize:10,fontWeight:700,color:C.textMut,
+                      textAlign:'left',textTransform:'uppercase',letterSpacing:.5}}>{h}</th>))}
+                </tr>
+              </thead>
+              <tbody>
+                {drillRecs.map(row=>{
+                  const dist=Math.max(0,(parseFloat(row.to)||0)-(parseFloat(row.from)||0));
+                  return(
+                    <tr key={row._k} style={{borderBottom:`1px solid #f1f5f9`}}>
+                      <td style={{padding:'5px 6px',minWidth:150}}>
+                        {holes.length>0
+                          ?<select value={row.holeId} onChange={e=>{
+                              const h=holes.find(h=>h.id===e.target.value);
+                              updateDrillRec(row._k,'holeId',e.target.value);
+                              if(h)updateDrillRec(row._k,'holeName',h.name);
+                            }} style={{...sel,fontSize:11}}>
+                              <option value="">Kuyu seç...</option>
+                              {holes.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
+                            </select>
+                          :<input value={row.holeName} onChange={e=>updateDrillRec(row._k,'holeName',e.target.value)}
+                              style={{...inp,fontSize:11}} placeholder="Kuyu adı"/>}
+                      </td>
+                      <td style={{padding:'5px 6px'}}>
+                        <input type="number" value={row.from} onChange={e=>updateDrillRec(row._k,'from',e.target.value)}
+                          style={{...inp,width:80,fontSize:11}} placeholder="0"/>
+                      </td>
+                      <td style={{padding:'5px 6px'}}>
+                        <input type="number" value={row.to} onChange={e=>updateDrillRec(row._k,'to',e.target.value)}
+                          style={{...inp,width:80,fontSize:11}} placeholder="0"/>
+                      </td>
+                      <td style={{padding:'5px 8px'}}>
+                        <span style={{fontWeight:700,color:dist>0?C.green:C.textMut,fontSize:13}}>
+                          {dist>0?`${dist.toFixed(1)} m`:'—'}
+                        </span>
+                      </td>
+                      <td style={{padding:'5px 6px'}}>
+                        <input type="number" value={row.rop} onChange={e=>updateDrillRec(row._k,'rop',e.target.value)}
+                          style={{...inp,width:80,fontSize:11}} placeholder="0"/>
+                      </td>
+                      <td style={{padding:'5px 4px'}}>
+                        <button onClick={()=>removeDrillRec(row._k)}
+                          style={{background:'none',border:'none',cursor:'pointer',color:C.red,fontSize:16,lineHeight:1}}>×</button>
+                      </td>
+                    </tr>);})}
+              </tbody>
+            </table>
+            <button onClick={addDrillRec}
+              style={{marginTop:8,background:'none',border:'none',color:C.blue,fontSize:12,
+                cursor:'pointer',padding:'4px 0',display:'flex',alignItems:'center',gap:4,fontWeight:600}}>
+              + Sondaj Kaydı Ekle
+            </button>
+          </div>)}
+      </div>
+
+      {/* Footer buttons */}
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',paddingBottom:24}}>
+        <Btn ch="İptal" onClick={()=>nav('dsr')}/>
+        <Btn ch="Taslak Kaydet" onClick={()=>handleSave('PENDING APPROVAL')} variant="outline"/>
+        <Btn ch={saving?"Kaydediliyor...":"Gönder →"} variant="primary" onClick={()=>handleSave('PENDING APPROVAL')}/>
+      </div>
+    </div>);
+};
+
 // ── DSR LIST (Supabase) ───────────────────────────────────────────────────────
 const DSRPage=({nav})=>{
   const [dsrs,setDsrs]=useState([]);
@@ -529,7 +929,10 @@ const DSRPage=({nav})=>{
         <FSel label="Status" opts={["PENDING APPROVAL","APPROVED","VALIDATED","REJECTED"]} val={fStatus} onChange={v=>{setFStatus(v);setPage(1);}} w={160}/>
         <FSel label="Drill Name" opts={drillNames} val={fDrill} onChange={v=>{setFDrill(v);setPage(1);}} w={120}/>
         <Btn ch="Reset" onClick={()=>{setQ("");setFStatus("all");setFDrill("all");setPage(1);}} sm/>
-        <div style={{marginLeft:"auto"}}><Btn ch="Bulk Export" sm icon={Ic.dl}/></div>
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          <Btn ch="+ New DSR" variant="primary" onClick={()=>nav("dsr-create")}/>
+          <Btn ch="Bulk Export" sm icon={Ic.dl}/>
+        </div>
       </div>
       <div style={{marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
         <SearchBar value={q} onChange={v=>{setQ(v);setPage(1);}}/>
@@ -2733,7 +3136,7 @@ const PAGE_TITLES={
   "clients":"Clients","contracts":"Contracts","projects":"Projects",
   "holes":"Holes","hole-detail":"Hole Detail","bits":"Bits","drills":"Drilling Rigs",
   "consumables":"Consumables","employees":"Employees","equipment":"Equipment",
-  "report-setup":"Report Setup","users":"User Management",
+  "report-setup":"Report Setup","users":"User Management","dsr-create":"New Daily Shift Report",
 };
 
 const Topbar=({page,role})=>{
@@ -2803,6 +3206,7 @@ export default function App(){
     switch(page){
       case "home":         return <HomePage nav={nav}/>;
       case "dsr":          return <DSRPage nav={nav}/>;
+      case "dsr-create":   return <DSRCreatePage nav={nav}/>;
       case "dsr-summary":  return <DSRSummaryPage nav={nav} params={params}/>;
       case "shift-detail": return <ShiftDetailPage nav={nav} params={params}/>;
       case "timesheet":    return <TimesheetPage nav={nav}/>;

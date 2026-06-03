@@ -582,6 +582,14 @@ const DSRCreatePage=({nav})=>{
   const handleSave=async()=>{
     if(!date||!shift||!drillId){doToast('Tarih, Vardiya ve Rig ID zorunlu!');return;}
     setSaving(true);
+    // Duplicate kontrol — aynı tarih+vardiya+rig zaten var mı?
+    const{data:existing}=await supabase.from('daily_shift_reports')
+      .select('id').eq('report_date',date).eq('shift',shift).eq('drill_id',drillId).single();
+    if(existing){
+      setSaving(false);
+      doToast(`❌ ${date} ${shift} vardiyası için bu rig zaten girilmiş!`);
+      return;
+    }
     const{data:dsr,error}=await supabase.from('daily_shift_reports').insert({
       report_date:date,shift,status:'PENDING APPROVAL',
       drill_id:drillId||null,

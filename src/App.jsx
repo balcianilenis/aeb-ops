@@ -3143,7 +3143,7 @@ const UsersPage=({nav,currentUser})=>{
 };
 
 // ── SIDEBAR ───────────────────────────────────────────────────────────────────
-const Sidebar=({page,nav,user,role,onLogout})=>{
+const Sidebar=({page,nav,user,role,onLogout,isOpen,onClose})=>{
   const [mgmtOpen,setMgmtOpen]=useState(true);
   const [presetsOpen,setPresetsOpen]=useState(true);
   const isActive=p=>p===page;
@@ -3151,7 +3151,7 @@ const Sidebar=({page,nav,user,role,onLogout})=>{
   const NavItem=({label,p,badge,indent})=>{
     const active=isActive(p);
     return(
-      <div onClick={()=>nav(p)}
+      <div onClick={()=>{nav(p);onClose&&onClose();}}
         style={{display:"flex",alignItems:"center",padding:"8px 16px 8px "+(indent?36:16)+"px",
           cursor:"pointer",borderRadius:6,margin:"1px 8px",
           background:active?C.sidebarActive:"transparent",transition:"background .15s"}}>
@@ -3172,13 +3172,14 @@ const Sidebar=({page,nav,user,role,onLogout})=>{
   return(
     <div style={{width:260,minWidth:260,background:C.sidebarBg,display:"flex",flexDirection:"column",
       height:"100vh",position:"sticky",top:0,flexShrink:0,borderRight:"1px solid rgba(255,255,255,.06)"}}>
-      <div style={{padding:"20px 16px 18px",borderBottom:`1px solid ${C.sidebarBorder}`,display:"flex",alignItems:"center",gap:12}}>
-        <img src="/logo.png" alt="AEB Logo" style={{width:42,height:42,objectFit:"contain",flexShrink:0,filter:"drop-shadow(0 2px 4px rgba(0,0,0,.3))"}}
+      <div style={{padding:"16px 16px 14px",borderBottom:`1px solid ${C.sidebarBorder}`,display:"flex",alignItems:"center",gap:12}}>
+        <img src="/logo.png" alt="AEB Logo" style={{width:36,height:36,objectFit:"contain",flexShrink:0,filter:"drop-shadow(0 2px 4px rgba(0,0,0,.3))"}}
           onError={e=>{e.target.style.display="none";}}/>
-        <div>
-          <div style={{fontSize:13,fontWeight:800,color:"#f1f5f9",letterSpacing:.3,lineHeight:1.3}}>AEB Operations</div>
-          <div style={{fontSize:13,fontWeight:800,color:"#60a5fa",letterSpacing:.3}}>Intelligence™</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#f1f5f9",letterSpacing:.3,lineHeight:1.3}}>AEB Operations</div>
+          <div style={{fontSize:12,fontWeight:800,color:"#60a5fa",letterSpacing:.3}}>Intelligence™</div>
         </div>
+        {onClose&&<button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:18,padding:2}}>×</button>}
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
         <NavItem label="Home" p="home"/>
@@ -3230,19 +3231,27 @@ const PAGE_TITLES={
   "report-setup":"Report Setup","users":"User Management","dsr-create":"New Daily Shift Report",
 };
 
-const Topbar=({page,role})=>{
+const Topbar=({page,role,onMenuClick})=>{
   const rc={Admin:C.purple,Supervisor:C.blue,Viewer:C.teal};
   const rbc={Admin:"#faf5ff",Supervisor:"#eff6ff",Viewer:"#f0fdfa"};
   return(
     <div style={{height:52,background:C.white,borderBottom:`1px solid ${C.border}`,
-      display:"flex",alignItems:"center",paddingRight:20,flexShrink:0,
+      display:"flex",alignItems:"center",paddingRight:16,flexShrink:0,
       position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}>
-      <div style={{flex:1,padding:"0 24px"}}>
+      {/* Hamburger — sadece mobilde */}
+      <button onClick={onMenuClick}
+        style={{display:"none",background:"none",border:"none",cursor:"pointer",
+          padding:"8px 14px",color:C.textSec,fontSize:20,lineHeight:1,
+          id:"hamburger"}}
+        className="mobile-menu-btn">
+        ☰
+      </button>
+      <div style={{flex:1,padding:"0 16px"}}>
         <span style={{fontSize:14,fontWeight:700,color:C.textPri}}>
           {PAGE_TITLES[page]||"AEB Operations Intelligence™"}
         </span>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
         {role&&<span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:12,
           background:rbc[role]||"#f0fdfa",color:rc[role]||C.teal}}>{role}</span>}
         <button style={{width:28,height:28,borderRadius:"50%",background:"#1d4ed8",color:"#fff",
@@ -3258,6 +3267,15 @@ export default function App(){
   const [authState,setAuthState]=useState("loading");
   const [user,setUser]=useState(null);
   const [role,setRole]=useState("Viewer");
+  const [sidebarOpen,setSidebarOpen]=useState(false);
+
+  // Mobil mi kontrol
+  const [isMobile,setIsMobile]=useState(window.innerWidth<768);
+  useEffect(()=>{
+    const check=()=>setIsMobile(window.innerWidth<768);
+    window.addEventListener('resize',check);
+    return()=>window.removeEventListener('resize',check);
+  },[]);
 
   const loadRole=useCallback(async(userId)=>{
     const {data}=await supabase.from('user_profiles').select('role,is_active').eq('id',userId).single();
@@ -3285,7 +3303,11 @@ export default function App(){
     setPage("home");
   };
 
-  const nav=(p,pr={})=>{setPage(p);setParams(pr);window.scrollTo({top:0,behavior:"smooth"});};
+  const nav=(p,pr={})=>{
+    setPage(p);setParams(pr);
+    setSidebarOpen(false);
+    window.scrollTo({top:0,behavior:"smooth"});
+  };
   const isAdmin=role==="Admin";
 
   const renderPage=()=>{
@@ -3331,18 +3353,61 @@ export default function App(){
   return(
     <div style={{display:"flex",minHeight:"100vh",background:C.bg,
       fontFamily:"'Inter','Segoe UI',system-ui,sans-serif"}}>
-      <Sidebar page={page} nav={nav} user={user} role={role} onLogout={handleLogout}/>
+
+      {/* Mobil overlay */}
+      {isMobile&&sidebarOpen&&(
+        <div onClick={()=>setSidebarOpen(false)}
+          style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:998}}/>)}
+
+      {/* Sidebar */}
+      <div style={{
+        position:isMobile?"fixed":"sticky",
+        left:0,top:0,
+        transform:isMobile?(sidebarOpen?"translateX(0)":"translateX(-100%)"):"translateX(0)",
+        transition:"transform .25s ease",
+        zIndex:999,
+        height:"100vh",
+        display:isMobile&&!sidebarOpen?"none":"flex",
+        flexShrink:0,
+      }}>
+        <Sidebar page={page} nav={nav} user={user} role={role} onLogout={handleLogout}
+          isOpen={sidebarOpen} onClose={isMobile?()=>setSidebarOpen(false):null}/>
+      </div>
+
       <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-        <Topbar page={page} role={role}/>
-        <main style={{flex:1,padding:24,boxSizing:"border-box"}}>
+        <div style={{height:52,background:C.white,borderBottom:`1px solid ${C.border}`,
+          display:"flex",alignItems:"center",paddingRight:16,flexShrink:0,
+          position:"sticky",top:0,zIndex:50,boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}>
+          {/* Hamburger — sadece mobilde */}
+          {isMobile&&(
+            <button onClick={()=>setSidebarOpen(true)}
+              style={{background:"none",border:"none",cursor:"pointer",
+                padding:"8px 14px",color:C.textSec,fontSize:22,lineHeight:1}}>
+              ☰
+            </button>)}
+          <div style={{flex:1,padding:isMobile?"0 8px":"0 24px"}}>
+            <span style={{fontSize:isMobile?13:14,fontWeight:700,color:C.textPri}}>
+              {PAGE_TITLES[page]||"AEB Operations Intelligence™"}
+            </span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {role&&!isMobile&&<span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:12,
+              background:role==="Admin"?"#faf5ff":role==="Supervisor"?"#eff6ff":"#f0fdfa",
+              color:role==="Admin"?C.purple:role==="Supervisor"?C.blue:C.teal}}>{role}</span>}
+            <button style={{width:28,height:28,borderRadius:"50%",background:"#1d4ed8",color:"#fff",
+              border:"none",cursor:"pointer",fontWeight:700,fontSize:13}}>?</button>
+          </div>
+        </div>
+        <main style={{flex:1,padding:isMobile?12:24,boxSizing:"border-box",overflowX:"hidden"}}>
           {renderPage()}
         </main>
-        <footer style={{borderTop:`1px solid ${C.border}`,padding:"10px 24px",background:C.white,
-          display:"flex",justifyContent:"flex-end",alignItems:"center",
-          fontSize:11,color:C.textMut,fontWeight:500}}>
-          © 2026 AEB Operations Intelligence™ · Powered by Anıl Enis BALCI All Rights Reserved.
-          <span style={{marginLeft:8,fontWeight:800,color:C.purple,fontSize:13}}>NS</span>
-        </footer>
+        {!isMobile&&(
+          <footer style={{borderTop:`1px solid ${C.border}`,padding:"10px 24px",background:C.white,
+            display:"flex",justifyContent:"flex-end",alignItems:"center",
+            fontSize:11,color:C.textMut,fontWeight:500}}>
+            © 2026 AEB Operations Intelligence™ · Powered by Anıl Enis BALCI All Rights Reserved.
+            <span style={{marginLeft:8,fontWeight:800,color:C.purple,fontSize:13}}>NS</span>
+          </footer>)}
       </div>
     </div>);
 }

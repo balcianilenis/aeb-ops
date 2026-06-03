@@ -501,7 +501,10 @@ const calcHours=(s,e)=>{
   return d>0?Math.round(d/60*100)/100:0;
 };
 
-const DSRCreatePage=({nav})=>{
+const DSRCreatePage=({nav,params})=>{
+  const isEdit=!!params?.dsrId;
+  const dsrId=params?.dsrId||null;
+
   const [drills,setDrills]=useState([]);
   const [holes,setHoles]=useState([]);
   const [employees,setEmployees]=useState([]);
@@ -511,7 +514,7 @@ const DSRCreatePage=({nav})=>{
   const [shift,setShift]=useState('DAY');
   const [drillId,setDrillId]=useState('');
   const [holeId,setHoleId]=useState('');
-  const [holeInfo,setHoleInfo]=useState(null); // auto-filled from hole selection
+  const [holeInfo,setHoleInfo]=useState(null);
 
   // Seçili tarih + rig için hangi vardiyalar dolu?
   const [usedShifts,setUsedShifts]=useState([]);
@@ -542,6 +545,48 @@ const DSRCreatePage=({nav})=>{
       supabase.from('employees').select('id,first_name,last_name').eq('status','Active').order('first_name'),
     ]).then(([d,h,em])=>{
       setDrills(d.data||[]);setHoles(h.data||[]);setEmployees(em.data||[]);
+      // Edit modunda mevcut veriyi yükle
+      if(isEdit&&dsrId){
+        Promise.all([
+          supabase.from('daily_shift_reports').select('*').eq('id',dsrId).single(),
+          supabase.from('dsr_workers').select('*').eq('dsr_id',dsrId),
+          supabase.from('dsr_activities').select('*').eq('dsr_id',dsrId),
+          supabase.from('dsr_drilling_records').select('*').eq('dsr_id',dsrId),
+        ]).then(([dsr,w,a,dr])=>{
+          if(dsr.data){
+            setDate(dsr.data.report_date);
+            setShift(dsr.data.shift);
+            setDrillId(dsr.data.drill_id||'');
+            // Hole bilgisi
+            if(dsr.data.project_id){
+              const hole=h.data?.find(x=>x.project_id===dsr.data.project_id);
+              if(hole){
+                setHoleId(hole.id);
+                setHoleInfo({
+                  clientId:hole.client_id,clientName:hole.clients?.name||'—',
+                  contractId:hole.contract_id,contractName:hole.contracts?.name||'—',
+                  projectId:hole.project_id,projectName:hole.projects?.name||'—',
+                  holeName:hole.name,
+                });
+              }
+            }
+          }
+          if(w.data?.length)setWorkers(w.data.map(r=>({
+            _k:r.id,empId:r.employee_id||'',empName:r.employee_name||'',
+            role:r.role||'',start:r.start_time?.slice(0,5)||'06:30',end:r.end_time?.slice(0,5)||'18:30',
+            id:r.id,
+          })));
+          if(a.data?.length)setActivities(a.data.map(r=>({
+            _k:r.id,cat:r.category||'',act:r.activity||'',
+            start:r.start_time?.slice(0,5)||'',end:r.end_time?.slice(0,5)||'',
+            id:r.id,
+          })));
+          if(dr.data?.length)setDrillRecs(dr.data.map(r=>({
+            _k:r.id,holeId:r.hole_id||'',holeName:r.hole_name||'',
+            from:r.depth_from||'',to:r.depth_to||'',id:r.id,
+          })));
+        });
+      }
     });
   },[]);
 
@@ -590,10 +635,11 @@ const DSRCreatePage=({nav})=>{
 
   const handleSave=async()=>{
     if(!date||!shift||!drillId){doToast('Tarih, Vardiya ve Rig ID zorunlu!');return;}
-    if(usedShifts.includes(shift)){doToast('Bu vardiya zaten girilmiş!');return;}
+    if(!isEdit&&usedShifts.includes(shift)){doToast('Bu vardiya zaten girilmiş!');return;}
     setSaving(true);
-    const{data:dsr,error}=await supabase.from('daily_shift_reports').insert({
-      report_date:date,shift,status:'PENDING APPROVAL',
+    let savedDsrId=dsrId;
+    const payload={
+      report_date:date,shift,
       drill_id:drillId||null,
       client_id:holeInfo?.clientId||null,
       contract_id:holeInfo?.contractId||null,
@@ -601,30 +647,43 @@ const DSRCreatePage=({nav})=>{
       total_man_hours:totalManHrs,
       total_activity_hours:totalActHrs,
       total_distance_drilled:totalDist,
-    }).select('id').single();
-    if(error){setSaving(false);doToast('Hata: '+error.message);return;}
-    const dsrId=dsr.id;
+    };
+    if(isEdit){
+      const{error}=await supabase.from('daily_shift_reports').update(payload).eq('id',dsrId);
+      if(error){setSaving(false);doToast('Hata: '+error.message);return;}
+      // Mevcut satırları sil, yeniden ekle
+      await Promise.all([
+        supabase.from('dsr_workers').delete().eq('dsr_id',dsrId),
+        supabase.from('dsr_activities').delete().eq('dsr_id',dsrId),
+        supabase.from('dsr_drilling_records').delete().eq('dsr_id',dsrId),
+      ]);
+    } else {
+      const{data:dsr,error}=await supabase.from('daily_shift_reports')
+        .insert({...payload,status:'PENDING APPROVAL'}).select('id').single();
+      if(error){setSaving(false);doToast('Hata: '+error.message);return;}
+      savedDsrId=dsr.id;
+    }
     const wRows=workers.filter(r=>r.empId||r.empName).map(r=>({
-      dsr_id:dsrId,employee_id:r.empId||null,
+      dsr_id:savedDsrId,employee_id:r.empId||null,
       employee_name:r.empName||employees.find(e=>e.id===r.empId)?.first_name||'',
       role:r.role||null,start_time:r.start||null,end_time:r.end||null,
       man_hours:calcHours(r.start,r.end),
     }));
     if(wRows.length)await supabase.from('dsr_workers').insert(wRows);
     const aRows=activities.filter(r=>r.act||r.cat).map(r=>({
-      dsr_id:dsrId,category:r.cat||null,activity:r.act||null,
+      dsr_id:savedDsrId,category:r.cat||null,activity:r.act||null,
       start_time:r.start||null,end_time:r.end||null,
       duration_hours:calcHours(r.start,r.end),
     }));
     if(aRows.length)await supabase.from('dsr_activities').insert(aRows);
     const dRows=drillRecs.filter(r=>r.to!==''&&r.from!=='').map(r=>({
-      dsr_id:dsrId,hole_id:r.holeId||null,hole_name:r.holeName||null,
+      dsr_id:savedDsrId,hole_id:r.holeId||null,hole_name:r.holeName||null,
       depth_from:parseFloat(r.from)||0,depth_to:parseFloat(r.to)||0,
       rop:rop?parseFloat(rop):null,
     }));
     if(dRows.length)await supabase.from('dsr_drilling_records').insert(dRows);
     setSaving(false);
-    doToast('✓ DSR kaydedildi!');
+    doToast(isEdit?'✓ DSR güncellendi!':'✓ DSR kaydedildi!');
     setTimeout(()=>nav('dsr'),1200);
   };
 
@@ -650,7 +709,7 @@ const DSRCreatePage=({nav})=>{
   return(
     <div style={{maxWidth:880,margin:'0 auto'}}>
       <Toast msg={toast}/>
-      <Crumb items={[{label:'Home',page:'home'},{label:'Daily Shift Report',page:'dsr'},{label:'New DSR'}]} nav={nav}/>
+      <Crumb items={[{label:'Home',page:'home'},{label:'Daily Shift Report',page:'dsr'},{label:isEdit?'Edit DSR':'New DSR'}]} nav={nav}/>
 
       {/* KPI Bar */}
       <div style={{display:'flex',gap:10,marginBottom:14}}>
@@ -962,7 +1021,14 @@ const DSRPage=({nav})=>{
                 <Td ch={<span style={{color:C.blue}}>{r.projects?.name||"—"}</span>}/>
                 <Td ch={r.clients?.name||"—"}/>
                 <Td ch={r.total_distance_drilled||0}/>
-                <Td ch={<IBtn icon={Ic.dl} color={C.textMut} onClick={e=>e.stopPropagation()}/>}/>
+                <Td ch={
+                  <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                    {r.status==='PENDING APPROVAL'
+                      ?<IBtn icon={Ic.edit} color={C.teal} title="Düzenle"
+                          onClick={e=>{e.stopPropagation();nav("dsr-create",{dsrId:r.id});}}/>
+                      :<span title="Kilitli" style={{fontSize:12,color:C.textMut}}>🔒</span>}
+                    <IBtn icon={Ic.dl} color={C.textMut} onClick={e=>e.stopPropagation()}/>
+                  </div>}/>
               </tr>))}
           </tbody>
         </table>
@@ -3206,7 +3272,7 @@ export default function App(){
     switch(page){
       case "home":         return <HomePage nav={nav}/>;
       case "dsr":          return <DSRPage nav={nav}/>;
-      case "dsr-create":   return <DSRCreatePage nav={nav}/>;
+      case "dsr-create":   return <DSRCreatePage nav={nav} params={params}/>;
       case "dsr-summary":  return <DSRSummaryPage nav={nav} params={params}/>;
       case "shift-detail": return <ShiftDetailPage nav={nav} params={params}/>;
       case "timesheet":    return <TimesheetPage nav={nav}/>;
